@@ -1,20 +1,17 @@
 # Use an official Python runtime as a parent image
-FROM python:2.7-slim
+FROM python:3
 
-# Set the working directory to /app
-WORKDIR /app
+RUN pip3 install torch
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# Set the working directory to /reflexnet_run
+WORKDIR /reflexnet_run
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --trusted-host pypi.python.org -r requirements.txt
-
-# Make port 80 available to the world outside this container
-EXPOSE 80
+# Copy the current directory contents into the container at /reflexnet_run
+COPY . /reflexnet_run
 
 # Define environment variable
-ENV NAME World
+#ENV NAME World
 
 # Run app.py when the container launches
-CMD ["python", "app.py"]
+#CMD bash
+CMD tail -f /dev/null
