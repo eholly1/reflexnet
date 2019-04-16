@@ -69,6 +69,9 @@ class ZooPolicyTensorflow(object):
         a = tf.get_default_session().run(self.pi, feed_dict=dict( (ph,data[None]) for ph,data in zip(self.obs_tuple, obs_data) ))
         return a[0]  # return first in batch
 
+    def __call__(self, obs_data):
+        return self.act(obs_data)
+
 
 def demo_run():
     config = tf.ConfigProto(

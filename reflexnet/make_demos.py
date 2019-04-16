@@ -3,6 +3,7 @@ import argparse
 import gym
 import os
 import roboschool
+import torch
 
 import rollouts
 import utils
@@ -19,10 +20,10 @@ def make_demos(
   env = gym.make(env_name)
 
   # Make policy.
-  utils.make_roboschool_policy(env_name, env)
+  policy = utils.make_roboschool_policy(env_name, env)
 
   # Make rollout data.
-  rollout_data = rollout_n(
+  rollout_data = rollouts.rollout_n(
     num_rollouts,
     env=env,
     policy=policy,
@@ -40,7 +41,7 @@ def main():
   parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Name of env to make and use.')
   parser.add_argument('--action_noise', default=0.3, type=float, help='Probability of adding noise to each action.')
   parser.add_argument('--max_rollout_length', default=200, type=int, help='Max length of each rollout.')
-  parser.add_argument('--num_rollouts', default=10000, type=int, help='Number of rollouts to collect and save.')
+  parser.add_argument('--num_rollouts', default=6000, type=int, help='Number of rollouts to collect and save.')
   parser.add_argument('--demo_filename', default='rollouts.torch', type=str, help='Name of demo file to save.')
   args = parser.parse_args()
 

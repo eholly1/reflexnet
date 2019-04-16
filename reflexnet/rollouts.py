@@ -1,6 +1,7 @@
 
 import numpy as np
 import torch
+from tqdm import tqdm
 import utils
 
 def rollout(env, policy, max_steps=1000, action_noise=0.0):
@@ -39,6 +40,9 @@ def rollout(env, policy, max_steps=1000, action_noise=0.0):
       if np.random.uniform() < action_noise:
         act += env.action_space.sample()
     obs, rew, done, _ = env.step(act)
+    rollout_data['obs'].append(obs)
+    rollout_data['rew'].append(rew)
+    rollout_data['done'].append(done)
 
   rollout_data = utils.tree_apply(torch.tensor, rollout_data)
   for k in ['obs', 'act', 'rew', 'done']:
@@ -49,19 +53,22 @@ def rollout_n(n, *args, **kwargs):
   """Run multiple rollouts and batch the results.
   Args:
     n: The number of rollouts.
+  Returns:
+    A dict of packed sequences for keys ['obs', 'act', 'rew', 'done'].
   """
   rollout_data_list = []
   print('Collectin %d episodes...'%n)
-  for _ in tdqm(range(n)):
-    rollout_data_list.append(rollout_episode(*args, **kwargs))
+  for _ in tqdm(range(n)):
+    rollout_data_list.append(rollout(*args, **kwargs))
 
   # Batch the data.
-  batched_rollout_data = {}
-  for k in rollout_data_list[0]:
-    batched_rollout_data[k] = torch.stack([rollout_data[k] for rollout_data in rollout_data_list])
-
-  # Make the data time-major.
+  sort_indices = torch.argsort(
+    torch.tensor([rollout['num_steps'] for rollout in rollout_data_list]),
+    descending=True)
+  rollout_data_list = [rollout_data_list[i] for i in sort_indices]
+  packed_rollout_data = {}
   for k in ['obs', 'act', 'rew', 'done']:
-    batched_rollout_data[k] = torch.transpose(batched_rollout_data[k], 0, 1)
+    packed_rollout_data[k] = torch.nn.utils.rnn.pack_sequence(
+      [rollout_data[k] for rollout_data in rollout_data_list])
 
-  return batched_rollout_data
+  return packed_rollout_data
