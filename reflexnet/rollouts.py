@@ -29,18 +29,17 @@ def rollout(env, policy, max_steps=1000, action_noise=0.0):
 
   # Initialize collection.
   obs = env.reset()
-  rollout_data['obs'].append(obs)
   done = False
 
   while not done and rollout_data['num_steps'] < max_steps:
     rollout_data['num_steps'] += 1
+    rollout_data['obs'].append(obs)
     act = policy(obs)
     rollout_data['act'].append(act)
     if action_noise > 0.0:
       if np.random.uniform() < action_noise:
         act += env.action_space.sample()
     obs, rew, done, _ = env.step(act)
-    rollout_data['obs'].append(obs)
     rollout_data['rew'].append(rew)
     rollout_data['done'].append(done)
 
@@ -57,7 +56,7 @@ def rollout_n(n, *args, **kwargs):
     A dict of packed sequences for keys ['obs', 'act', 'rew', 'done'].
   """
   rollout_data_list = []
-  print('Collectin %d episodes...'%n)
+  print('Collecting %d episodes...'%n)
   for _ in tqdm(range(n)):
     rollout_data_list.append(rollout(*args, **kwargs))
 

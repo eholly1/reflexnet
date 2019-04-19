@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import torch
 
 class Dataset(ABC):
@@ -23,11 +23,13 @@ class Trainer(ABC):
     # TODO(eholly1): Summaries.
 
     def __init__(self, model, dataset, optim_cls=torch.optim.Adam, learning_rate=1e-5):
-        assert issubclass(model, torch.nn.Module)
+        assert issubclass(type(model), torch.nn.Module)
         self._model = model
-        assert issubclass(dataset, Dataset)
-        self.dataset = dataset
-        self._optimizer = optim_cls(lr=learning_rate)
+        assert issubclass(dataset.__class__, Dataset)
+        self._dataset = dataset
+        self._optimizer = optim_cls(
+            params=self._model.parameters(),
+            lr=learning_rate)
 
     @abstractmethod
     def _inference_and_loss(self, sample_data):
@@ -66,14 +68,14 @@ class Trainer(ABC):
                     after_eval_callback(i)
             running_loss += self._train()
             steps_since_log += 1.0
-            if (i+1) & log_every == 0:
-                self.print(i, "Train Loss", running_loss / steps_since_log)
+            if (i+1) % log_every == 0:
+                self.print(i, "Train Loss: ", running_loss / steps_since_log)
                 running_loss = 0.0
                 steps_since_log = 0.0
 
     def print(self, i, *args):
-        prefix_str = "[%d]\t" % i
-        print_str = ("{}" * (len(args) + 1)).format(i, *args)
+        args = ["[{}]\t".format(i)] + list(args)
+        print_str = ("{}" * len(args)).format(*args)
         print(print_str)
 
     def _train(self):
@@ -86,7 +88,7 @@ class Trainer(ABC):
         return loss
 
     def _test(self):
-        with torch.no_grad:
+        with torch.no_grad():
             self._model.eval()  # Put model in eval mode.
             sample_data = self._dataset.sample(batch_size=float('inf'), eval=True)
             loss = self._inference_and_loss(sample_data)

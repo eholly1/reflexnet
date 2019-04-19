@@ -9,6 +9,7 @@ def _module_list_forward(module_input, module_list):
 class FeedForward(torch.nn.Module):
 
 	def __init__(self, input_size, output_size, layers_config):
+		super().__init__()
 		modules = []
 		last_size = input_size
 		for layer_size in layers_config:

@@ -10,20 +10,22 @@ class BCFrameDataset(trainer.Dataset):
         self._batch_size = batch_size
         rollout_data = torch.load(load_path)
         self._init_dataset_with_rollout_data(rollout_data)
-        self._train_cutoff = self.N * (1.0 - eval_fraction)
+        self._train_cutoff = int(self.N * (1.0 - eval_fraction))
         
     @property
     def N(self):
         return self._N
 
     def _init_dataset_with_rollout_data(self, rollout_data):
-        self._N = rollout_data['num_steps'].numpy()
+        assert isinstance(rollout_data['obs'], torch.nn.utils.rnn.PackedSequence)
+        assert isinstance(rollout_data['act'], torch.nn.utils.rnn.PackedSequence)
 
-        # Store states and actions, and flatten to a single batch dim.
-        self._obs = rollout_data['obs']
-        self._obs = self._obs.view(-1, self._obs.shape[-1])
-        self._act = rollout_data['act']
-        self._act = self._act.view(-1, self._act.shape[-1])
+        # Store states and actions with single batch dim.
+        self._obs = rollout_data['obs'].data
+        self._act = rollout_data['act'].data
+        assert self._act.shape[0] == self._obs.shape[0]
+        assert len(self._act.shape) == 2
+        self._N = self._obs.shape[0]
 
         # Shuffle the data.
         shuffle_indices = np.random.choice(range(self.N), size=self.N, replace=False)
@@ -48,7 +50,7 @@ class BCFrameDataset(trainer.Dataset):
         }
         return sample_data
 
-DEFAULT_BC_LOSS_FN = torch.nn.modules.loss.SmoothL1Loss
+DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
 class BCTrainer(trainer.Trainer):
 
     def __init__(self, *args, **kwargs):

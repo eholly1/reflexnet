@@ -1,5 +1,12 @@
 import argparse
+import gym
+import os
+import roboschool
+import torch
+
 from behavioral_cloning import BCTrainer, BCFrameDataset
+import policy
+import rollouts
 import utils
 
 def train_behavioral_cloning(
@@ -12,25 +19,35 @@ def train_behavioral_cloning(
   eval_every,
   ):
   dataset = BCFrameDataset(batch_size, demo_filepath)
-  policy = 
+  env = gym.make(env_name)
+  training_policy = policy.FeedForwardPolicy.for_env(env)
   trainer = BCTrainer(
-    model=policy,
+    model=training_policy,
     dataset=dataset,
     learning_rate=learning_rate,
     )
+
+  def _after_eval_callback(i):
+    n = 20
+    packed_rollout_data = rollouts.rollout_n(n, env, training_policy)
+    avg_rew = torch.sum(packed_rollout_data['rew'].data)
+    trainer.print(i, 'Avg rollout reward: ', avg_rew)
+
   trainer.train_and_test(
     log_dir=log_dir,
     train_steps=train_steps,
+    after_eval_callback=_after_eval_callback,
   )
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.AddArgument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
-  parser.AddArgument('--env_name', defailt='Roboschool-Walker2d-v1', type=str, help='Parent directory under which to save output.')
-  parser.AddArgument('--demo_filepath', required=True, type=str, help='Full path to file with task demos.')
-  parser.AddArgument('--batch_size', default=16, type=int, help='Full path to file with task demos.')
-  parser.AddArgument('--learning_rate', default=1e-5, type=int, help='Full path to file with task demos.')
-  parser.AddArgument('--train_steps', default=10000, type=int, help='Full path to file with task demos.')
+  parser.add_argument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
+  parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Parent directory under which to save output.')
+  parser.add_argument('--demo_filepath', required=True, type=str, help='Full path to file with task demos.')
+  parser.add_argument('--batch_size', default=16, type=int, help='Batch size for SGD.')
+  parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')
+  parser.add_argument('--train_steps', default=10000, type=int, help='Total number of train steps.')
+  parser.add_argument('--eval_every', default=None, type=int, help='Eval after this many train steps.')
   args = parser.parse_args()
 
   args.log_dir = os.path.join(args.log_dir, 'behavioral_cloning', args.env_name)
