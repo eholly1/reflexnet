@@ -57,7 +57,7 @@ def rollout_n(n, *args, **kwargs):
   """
   rollout_data_list = []
   print('Collecting %d episodes...'%n)
-  for _ in range(n):
+  for _ in tqdm(range(n)):
     rollout_data_list.append(rollout(*args, **kwargs))
 
   # Batch the data.
