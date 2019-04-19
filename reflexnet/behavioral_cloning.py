@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+import summaries
 import trainer
 
 # TODO(eholly1): Make generic torch in-memory Dataset class.
@@ -70,5 +71,6 @@ class BCTrainer(trainer.Trainer):
         pred_act = self.policy(sample_data['obs'])
         expert_act = sample_data['act']
         loss = self._loss_fn(pred_act, expert_act)
+        summaries.add_scalar('_performance/loss', loss, self.global_step)
         return loss
 

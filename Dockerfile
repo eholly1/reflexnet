@@ -3,6 +3,7 @@ FROM python:3
 
 # Install python libraries.
 RUN pip3 install tensorflow
+RUN pip3 install tensorboardX
 RUN pip3 install torch
 RUN pip3 install tqdm
 

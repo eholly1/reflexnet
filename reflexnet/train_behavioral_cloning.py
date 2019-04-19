@@ -7,6 +7,7 @@ import torch
 from behavioral_cloning import BCTrainer, BCFrameDataset
 import policy
 import rollouts
+import summaries
 import utils
 
 def train_behavioral_cloning(
@@ -18,6 +19,7 @@ def train_behavioral_cloning(
   train_steps,
   eval_every,
   ):
+  summaries.init_summary_log_dir(log_dir)
   dataset = BCFrameDataset(batch_size, demo_filepath)
   env = gym.make(env_name)
   training_policy = policy.FeedForwardPolicy.for_env(env)
@@ -27,13 +29,14 @@ def train_behavioral_cloning(
     learning_rate=learning_rate,
     )
 
-  def _after_eval_callback(i):
+  def _after_eval_callback():
     n = 20
     packed_rollout_data = rollouts.rollout_n(n, env, training_policy)
-    avg_rew = torch.sum(packed_rollout_data['rew'].data)
-    trainer.print(i, 'Avg rollout reward: ', avg_rew)
+    avg_rew = torch.sum(packed_rollout_data['rew'].data) / n
+    trainer.print('Avg rollout reward: ', avg_rew)
+    summaries.add_scalar('_performance/avg_rollout_reward', avg_rew, trainer.global_step)
 
-  trainer.train_and_test(
+  trainer.train_and_eval(
     log_dir=log_dir,
     train_steps=train_steps,
     after_eval_callback=_after_eval_callback,
