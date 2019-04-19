@@ -39,7 +39,7 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
   parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Name of env to make and use.')
-  parser.add_argument('--action_noise', default=0.3, type=float, help='Probability of adding noise to each action.')
+  parser.add_argument('--action_noise', default=0.55, type=float, help='Probability of adding noise to each action.')
   parser.add_argument('--max_rollout_length', default=200, type=int, help='Max length of each rollout.')
   parser.add_argument('--num_rollouts', default=6000, type=int, help='Number of rollouts to collect and save.')
   parser.add_argument('--demo_filename', default='rollouts.torch', type=str, help='Name of demo file to save.')
