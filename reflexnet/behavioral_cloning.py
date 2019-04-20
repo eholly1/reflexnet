@@ -51,7 +51,8 @@ class BCFrameDataset(trainer.Dataset):
         }
         return sample_data
 
-DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
+# DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
+DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
 class BCTrainer(trainer.Trainer):
 
     def __init__(self, *args, **kwargs):
