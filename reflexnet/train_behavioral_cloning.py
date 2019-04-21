@@ -30,7 +30,7 @@ def train_behavioral_cloning(
     )
 
   def _after_eval_callback():
-    n = 20
+    n = 100
     packed_rollout_data = rollouts.rollout_n(n, env, training_policy)
     avg_rew = torch.sum(packed_rollout_data['rew'].data) / n
     trainer.print('Avg rollout reward: ', avg_rew)
