@@ -3,8 +3,34 @@ import json
 import os
 import subprocess
 import tensorflow as tf
+import torch
 
 import RoboschoolWalker2d_v1_2017jul
+
+def merge_packed_sequences(packed_sequences):
+  max_length = max(*[len(s.batch_sizes) for s in packed_sequences])
+  padded_sequences = [
+    torch.nn.utils.rnn.pad_packed_sequence(s, total_length=max_length)
+    for s in packed_sequences]
+  all_lengths = torch.cat(*[s.batch_sizes for s in packed_sequences])
+  sorted_lengths, sort_indices = torch.sort(all_lengths)
+  sorted_padded_sequences = padded_sequences[sort_indices]
+  return torch.nn.utils.rnn.pack_padded_sequence(sorted_padded_sequences, sorted_lengths)
+
+
+def load_subdirs(load_path):
+  if os.path.isfile(load_path):
+    if load_path.endswith('.torch'):
+      return [torch.load(load_path)]
+    else:
+      return []
+  elif os.path.isdir(load_path):
+    ret_list = []
+    for fname in os.listdir(load_path):
+      ret_list.extend(load_subdirs(os.path.join(load_path, fname)))
+    return ret_list
+  else:
+    raise ValueError('Load path not found: %s' % load_path)
 
 def make_roboschool_policy(env_name, env):
   if env_name == "RoboschoolWalker2d-v1":

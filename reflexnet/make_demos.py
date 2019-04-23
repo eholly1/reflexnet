@@ -2,6 +2,7 @@
 import argparse
 import gym
 import os
+import numpy as np
 import roboschool
 import torch
 
@@ -45,12 +46,14 @@ def main():
   parser.add_argument('--demo_filename', default='rollouts.torch', type=str, help='Name of demo file to save.')
   args = parser.parse_args()
 
-  args.log_dir = os.path.join(args.log_dir, 'demos', args.env_name)
+  initial_log_dir = os.path.join(args.log_dir, 'demos', args.env_name)
 
-  # Make a unique directory under log_dir and save args there.
-  utils.init_log_dir(args)
-
-  make_demos(**vars(args))
+  for action_noise in np.array(range(7))*0.1:
+    args.action_noise = action_noise
+    args.log_dir = initial_log_dir
+    # Make a unique directory under log_dir and save args there.
+    utils.init_log_dir(args)
+    make_demos(**vars(args))
 
 if __name__ == '__main__':
   main()
