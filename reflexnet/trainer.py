@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import time
+from tqdm import tqdm
 
 import summaries
 import torch
@@ -77,7 +78,7 @@ class Trainer(ABC):
       # Run training.
       self.print('Running training.')
       with summaries.Scope(path='train'):
-        for _ in range(eval_every):
+        for _ in tqdm(range(eval_every)):
           self._global_step += 1
           self._train()
           if self.global_step >= train_steps:
