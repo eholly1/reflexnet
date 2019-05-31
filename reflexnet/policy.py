@@ -63,7 +63,7 @@ class ReflexPolicy(TorchPolicy):
     self._reflexes = []
     for _ in range(self._obs_size):
       reflex_act_list = []
-      self._reflexes.append(reflex_act_list):
+      self._reflexes.append(reflex_act_list)
       for _ in range(self._act_size):
         reflex = network.FeedForward(
           input_size=1, output_size=1, layers_config=relfex_layers_config)

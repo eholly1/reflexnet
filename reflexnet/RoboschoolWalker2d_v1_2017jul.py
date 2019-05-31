@@ -10,7 +10,7 @@ class ZooPolicyTensorflow(object):
     def __init__(self, name, ob_space, ac_space, take_weights_here=None):
         self.name = name
 
-        with tf.variable_scope(name):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             obs_tuple = [
                 tf.placeholder(tf.float32,         (None, 1), name="obs0"),
                 tf.placeholder(tf.float32,        (None, 22), name="obs1"),

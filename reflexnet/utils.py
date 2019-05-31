@@ -4,17 +4,20 @@ import os
 import subprocess
 import tensorflow as tf
 import torch
+from torch.nn.utils.rnn import PackedSequence
 
 import RoboschoolWalker2d_v1_2017jul
 
-def merge_packed_sequences(packed_sequences):
+def merge_packed_sequences(*packed_sequences):
   max_length = max(*[len(s.batch_sizes) for s in packed_sequences])
-  padded_sequences = [
+  padded_sequences_and_lengths = [
     torch.nn.utils.rnn.pad_packed_sequence(s, total_length=max_length)
     for s in packed_sequences]
-  all_lengths = torch.cat(*[s.batch_sizes for s in packed_sequences])
-  sorted_lengths, sort_indices = torch.sort(all_lengths)
-  sorted_padded_sequences = padded_sequences[sort_indices]
+  padded_sequences, lengths = zip(*padded_sequences_and_lengths)
+  padded_sequences = torch.cat(padded_sequences, dim=1)  # Cat padded_sequences on batch dim.
+  lengths = torch.cat(lengths)
+  sorted_lengths, sort_indices = torch.sort(lengths, descending=True)
+  sorted_padded_sequences = padded_sequences[:, sort_indices]
   return torch.nn.utils.rnn.pack_padded_sequence(sorted_padded_sequences, sorted_lengths)
 
 
@@ -49,14 +52,20 @@ def make_roboschool_policy(env_name, env):
 
   return zoo_policy
 
-def tree_apply(fn, tree_node):
-  if isinstance(tree_node, dict):
-    return {k: tree_apply(fn, tree_node[k]) for k in tree_node}
-  if isinstance(tree_node, list):
-    return [tree_apply(fn, elem) for elem in tree_node]
-  if isinstance(tree_node, tuple):
-    return tuple([tree_apply(fn, elem) for elem in tree_node])
-  return fn(tree_node)
+def tree_apply(fn, *tree_nodes):
+  if isinstance(tree_nodes[0], dict):
+    ret_val = {}
+    for k in tree_nodes[0]:
+      ret_val[k] = tree_apply(fn, *[tn[k] for tn in tree_nodes])
+    return ret_val
+  if isinstance(tree_nodes[0], list):
+    ret_val = []
+    for i in range(len(tree_nodes[0])):
+      ret_val.append(tree_apply(fn, *[tn[i] for tn in tree_nodes]))
+    return ret_val
+  if isinstance(tree_nodes[0], torch.Tensor) or isinstance(tree_nodes[0], PackedSequence):
+    return fn(*tree_nodes)
+  return fn(*tree_nodes)
 
 def _confirm(question):
     answer = ""

@@ -12,13 +12,13 @@ class BCFrameDataset(trainer.Dataset):
   def __init__(self, batch_size, load_path, eval_fraction=0.2):
     self._batch_size = batch_size
 
-    if os.path.isfile(load_path)
+    if os.path.isfile(load_path):
       rollout_data = torch.load(load_path)
     elif os.path.isdir(load_path):
       rollout_data_list = utils.load_subdirs(load_path)
+      rollout_data = utils.tree_apply(utils.merge_packed_sequences, *rollout_data_list)
     else:
       raise ValueError('Load path not found: %s' % load_path)
-
     self._init_dataset_with_rollout_data(rollout_data)
     self._train_cutoff = int(self.N * (1.0 - eval_fraction))
     

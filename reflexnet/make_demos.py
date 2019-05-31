@@ -34,6 +34,7 @@ def make_demos(
 
   # Save demos to file.
   save_path = os.path.join(log_dir, demo_filename)
+  print('Saving demos to %s' % save_path)
   torch.save(rollout_data, save_path)
 
 def main():
