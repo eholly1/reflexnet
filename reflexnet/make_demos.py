@@ -16,12 +16,9 @@ def make_demos(
   max_rollout_length,
   num_rollouts,
   demo_filename,
-  render_dir,
 ):
   # Make environment.
   env = gym.make(env_name)
-  import pdb; pdb.set_trace()
-
 
   # Make policy.
   policy = utils.make_roboschool_policy(env_name, env)
@@ -33,7 +30,6 @@ def make_demos(
     policy=policy,
     max_steps=max_rollout_length,
     action_noise=action_noise,
-    render_dir=render_dir,
     )
 
   # Save demos to file.
@@ -49,7 +45,6 @@ def main():
   parser.add_argument('--max_rollout_length', default=200, type=int, help='Max length of each rollout.')
   parser.add_argument('--num_rollouts', default=1000, type=int, help='Number of rollouts to collect and save.')
   parser.add_argument('--demo_filename', default='rollouts.torch', type=str, help='Name of demo file to save.')
-  parser.add_argument('--render_dir', default=None, type=str, help='Pass this flag to render episodes.')
   args = parser.parse_args()
 
   initial_log_dir = os.path.join(args.log_dir, 'demos', args.env_name)

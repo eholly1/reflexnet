@@ -73,6 +73,8 @@ class Trainer(ABC):
     if after_eval_callback:
         after_eval_callback()
 
+    self._model.save(os.path.join(log_dir, 'policy'))    
+
     # Training Iterations
     while self.global_step < train_steps:
 
