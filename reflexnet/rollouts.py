@@ -1,10 +1,10 @@
-
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import numpy as np
 import torch
 from tqdm import tqdm
 import utils
 
-def rollout(env, policy, max_steps=1000, action_noise=0.0):
+def rollout(env, policy, max_steps=1000, action_noise=0.0, render_dir=None):
   """Run one rollout and return data.
 
   Args:
@@ -31,7 +31,12 @@ def rollout(env, policy, max_steps=1000, action_noise=0.0):
   obs = env.reset()
   done = False
 
+  if render_dir is not None:
+    video_recorder = VideoRecorder(env, base_path=render_dir)
+
   while not done and rollout_data['num_steps'] < max_steps:
+    if render_dir is not None:
+      video_recorder.capture_frame()
     rollout_data['num_steps'] += 1
     rollout_data['obs'].append(obs)
     act = policy(obs)
@@ -42,6 +47,9 @@ def rollout(env, policy, max_steps=1000, action_noise=0.0):
     obs, rew, done, _ = env.step(act)
     rollout_data['rew'].append(rew)
     rollout_data['done'].append(done)
+
+  if render_dir is not None:
+    video_recorder.close()
 
   rollout_data = utils.tree_apply(torch.tensor, rollout_data)
   for k in ['obs', 'act', 'rew', 'done']:

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 import time
 from tqdm import tqdm
 
@@ -88,6 +89,8 @@ class Trainer(ABC):
       self.print('Running eval.')
       with summaries.Scope(path='eval'):
         self._eval()
+
+      self._model.save(os.path.join(log_dir, 'policy'))
 
       # After eval callback.
       if after_eval_callback:
