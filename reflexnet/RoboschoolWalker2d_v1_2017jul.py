@@ -63,11 +63,21 @@ class ZooPolicyTensorflow(object):
         tf.get_default_session().run(self.weight_assignment_nodes, feed_dict=feed_dict)
 
     def act(self, obs_data, cx):
-        obs_data = [np.ones((1,)), obs_data]
+        added_batch_dim = False
+        if len(obs_data.shape) == 1:
+            obs_data = obs_data[None]
+            added_batch_dim = True
+        obs_data = [np.ones((1, 1)), obs_data]
         obs_data = [obs_data[0], obs_data[1]]
         # Because we need batch dimension, data[None] changes shape from [A] to [1,A]
-        a = tf.get_default_session().run(self.pi, feed_dict=dict( (ph,data[None]) for ph,data in zip(self.obs_tuple, obs_data) ))
-        return a[0]  # return first in batch
+        feed_dict = dict((ph,data) for ph,data in zip(self.obs_tuple, obs_data))
+        a = tf.get_default_session().run(
+            self.pi,
+            feed_dict=feed_dict)
+        if added_batch_dim:
+            return a[0]  # return first in batch
+        else:
+            return a
 
     def __call__(self, obs_data):
         return self.act(obs_data)

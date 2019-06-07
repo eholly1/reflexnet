@@ -20,7 +20,8 @@ class BCFrameDataset(trainer.Dataset):
     else:
       raise ValueError('Load path not found: %s' % load_path)
     self._init_dataset_with_rollout_data(rollout_data)
-    self._train_cutoff = int(self.N * (1.0 - eval_fraction))
+    self._eval_fraction = eval_fraction
+    self._train_cutoff = int(self.N * (1.0 - self._eval_fraction))
     
   @property
   def N(self):
@@ -41,6 +42,14 @@ class BCFrameDataset(trainer.Dataset):
     shuffle_indices = np.random.choice(range(self.N), size=self.N, replace=False)
     self._obs = self._obs[shuffle_indices, :]
     self._act = self._act[shuffle_indices, :]
+
+  def add_data(self, rollout_data):
+    assert isinstance(rollout_data['obs'], torch.Tensor)
+    assert isinstance(rollout_data['act'], torch.Tensor)
+    self._obs = torch.cat([rollout_data['obs'], self._obs], dim=0)
+    self._act = torch.cat([rollout_data['act'], self._act], dim=0)
+    self._N += rollout_data['obs'].shape[0]
+    self._train_cutoff = int(self.N * (1.0 - self._eval_fraction))
 
   def sample(self, batch_size=None, eval=False):
     if batch_size is None:

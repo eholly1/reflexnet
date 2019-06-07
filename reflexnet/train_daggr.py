@@ -10,7 +10,7 @@ import rollouts
 import summaries
 import utils
 
-def train_behavioral_cloning(
+def train_daggr(
   log_dir,
   env_name,
   demo_filepath,
@@ -29,12 +29,22 @@ def train_behavioral_cloning(
     learning_rate=learning_rate,
     )
 
+  oracle_policy = utils.make_roboschool_policy(env_name, env)
+
   def _after_eval_callback():
     n = 100
     packed_rollout_data = rollouts.rollout_n(n, env, training_policy)
     avg_rew = torch.sum(packed_rollout_data['rew'].data) / n
     trainer.print('Avg rollout reward: ', avg_rew)
     summaries.add_scalar('_performance/avg_rollout_reward', avg_rew, trainer.global_step)
+
+    # Add oracle data to dataset.
+    oracle_actions = oracle_policy(packed_rollout_data['obs'].data)
+    oracle_data = {
+      'obs': packed_rollout_data['obs'].data,
+      'act': torch.tensor(oracle_actions),
+    }
+    dataset.add_data(oracle_data)
 
   trainer.train_and_eval(
     log_dir=log_dir,
@@ -54,11 +64,11 @@ def main():
   parser.add_argument('--eval_every', default=None, type=int, help='Eval after this many train steps.')
   args = parser.parse_args()
 
-  args.log_dir = os.path.join(args.log_dir, 'behavioral_cloning', args.env_name)
+  args.log_dir = os.path.join(args.log_dir, 'daggr', args.env_name)
 
   utils.init_log_dir(args)
 
-  train_behavioral_cloning(**vars(args))
+  train_daggr(**vars(args))
 
 if __name__ == "__main__":
   main()
