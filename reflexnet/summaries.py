@@ -27,6 +27,7 @@ with summaries.Scope('train'):
 """
 
 import os
+import torch
 from tensorboardX import SummaryWriter
 
 _summary_log_dir = None
@@ -77,11 +78,12 @@ class Scope(object):
 
   def _add_histogram(self, name, value, global_step):
     if name not in self._histogram_summaries:
-      self._histogram_summaries[name] = (value, global_step)
+      self._histogram_summaries[name] = (
+        torch.unsqueeze(value, dim=-1), global_step)
     else:
       old_value, old_global_step = self._histogram_summaries[name]
       self._histogram_summaries[name] = (
-        old_value + value,
+        torch.cat([old_value, torch.unsqueeze(value, dim=-1)], dim=-1),
         max(old_global_step, global_step)
         )
 

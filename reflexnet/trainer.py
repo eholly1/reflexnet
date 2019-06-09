@@ -128,7 +128,7 @@ class Trainer(ABC):
     # Summarize timing.
     total_time = time.time() - start_time
     steps_per_sec = 1 / total_time
-    summaries.add_scalar('misc/eval_steps_per_sec', steps_per_sec, self.global_step)
+    summaries.add_scalar('misc/train_steps_per_sec', steps_per_sec, self.global_step)
 
     return loss
 
