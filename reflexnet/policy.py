@@ -91,6 +91,68 @@ class FeedForwardPolicy(TorchPolicy):
     return self._model
 
 
+class ReflexPolicy(TorchPolicy):
+
+  @staticmethod
+  def for_env(gym_env, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
+    obs_size = gym_env.observation_space.shape[0]
+    act_size = gym_env.action_space.shape[0]
+    return ReflexPolicy(
+      obs_size, act_size, num_reflexes=num_reflexes,
+      ref_layers_config=ref_layers_config, sup_layers_config=sup_layers_config)
+
+  def __init__(self, obs_size, act_size, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
+    super().__init__()
+    self._obs_size = obs_size
+    self._act_size = act_size
+    self._num_reflexes = num_reflexes
+
+    # Make reflex subnetworks. For each action dimension, there is a subnetwork 
+    self._reflexes = []
+    for a in range(act_size):
+      action_reflexes = []
+      for r in range(self._num_reflexes):
+        action_reflexes.append(network.FeedForward(obs_size, 1, layers_config=ref_layers_config))
+      action_reflexes = torch.nn.ModuleList(action_reflexes)
+      self._reflexes.append(action_reflexes)
+    self._reflexes = torch.nn.ModuleList(self._reflexes)
+
+    # Network for selecting amongst reflexes, given observation.
+    self._supervisor = network.FeedForward(obs_size, act_size * num_reflexes, layers_config=sup_layers_config)
+    self._softmax = torch.nn.Softmax(dim=-1)
+
+  def parameters(self):
+    return self._supervisor.parameters(), self._reflexes.parameters()
+
+  def reflex_softmax_weights(self, obs):
+    if len(obs.shape) == 1:
+      reflex_logits = self._supervisor(obs).view(self._act_size, self._num_reflexes)
+    elif len(obs.shape) == 2:
+      reflex_logits = self._supervisor(obs).view(-1, self._act_size, self._num_reflexes)
+    else:
+      raise ValueError('ReflexPolicy currently only supports observations with one or no batch dimensions')
+
+    return self._softmax(reflex_logits)  # Softmax over reflex dimension.
+
+  def reflex_outputs(self, obs):
+    reflex_outputs = []
+    for r in range(self._num_reflexes):
+      action_outputs = []
+      for a in range(self._act_size):
+        action_outputs.append(self._reflexes[a][r](obs))
+      action_outputs = torch.cat(action_outputs, dim=-1)
+      reflex_outputs.append(action_outputs)
+    reflex_outputs = torch.stack(reflex_outputs, dim=-1)
+    return reflex_outputs
+
+  def forward(self, obs):
+    reflex_outputs = self.reflex_outputs(obs)
+    reflex_softmax_weights = self.reflex_softmax_weights(obs)
+    weighted_reflex_outputs =  reflex_outputs * reflex_softmax_weights
+    action_outputs = torch.sum(weighted_reflex_outputs, dim=-1)
+    return action_outputs
+    
+
 class MetricPolicy(TorchPolicy):
 
   def __init__(self, obs_size, embedding_size, data, layers_config=[64, 64], k=1):
@@ -114,75 +176,3 @@ class MetricPolicy(TorchPolicy):
     embedding = self.get_embedding(obs)
     neighbor_dists, neighbor_idxs = self._kdtree.query(embedding, k)
     action = self._data[neighbor_idxs[0]]
-
-
-class ReflexPolicy(TorchPolicy):
-
-  def __init__(
-    self,
-    obs_size,
-    act_size,
-    num_latent_dims=25,
-    reflex_layers_config=[5],
-    supervisor_layers_config=[64, 64]):
-
-    self._obs_size = obs_size
-    self._act_size = act_size
-    self._num_latent_dims = num_latent_dims
-
-    self._reflex_modules = []  # For constructing a ModuleList.
-
-    # self._reflexes is a 2d-array of reflexes, from obs index to action index.
-    self._reflexes = []
-    for _ in range(self._obs_size):
-      reflex_act_list = []
-      self._reflexes.append(reflex_act_list)
-      for _ in range(self._act_size):
-        reflex = network.FeedForward(
-          input_size=1, output_size=1, layers_config=relfex_layers_config)
-        reflex_act_list.append(reflex)
-        self._reflex_modules.append(reflex)
-    self._reflex_modules = torch.nn.ModuleList(self._reflex_modules)
-
-    # The supervisor predicts latents 
-    self._supervisor = network.FeedForward(
-      input_size=obs_size, output_size=self._num_latent_dims,
-      layers_config=supervisor_layers_config, output_activation=torch.nn.Sigmoid)
-
-    self._activation_matrix = torch.nn.Parameter(
-      torch.ones(self._num_latent_dims, self._obs_size, self._act_size))
-    self._activation_softmax = torch.nn.Softmax(dim=-1)
-
-  def reflex_parameters(self):
-    return itertools.chain(*[r.parameters() for r in self._reflex_modules])
-
-  def supervisor_parameters(self):
-    raise NotImplementedError # Supervisor and activation parameters.
-
-  def forward(self, obs):
-    import pdb
-    pdb.set_trace()
-
-    # Use supervisor to modulate latents.
-    latent_activations = self._supervisor(obs)
-
-    # Transform latents into activations over reflexes.
-    reflex_activation_logits = torch.mm(latent_activations, self._activation_matrix)
-    reflex_activations = self._activation_softmax(reflex_activation_logits)
-
-    # Compute outputs of all reflexes.
-    reflex_outputs = []
-    for io in range(self._obs_size):
-      reflex_act_outputs = []
-      for ia in range(self._act_size):
-        reflex_act_outputs.append(self._reflexes[io][ia](obs[:, io]))
-      reflex_act_outputs = torch.stack(reflex_act_outputs)
-      reflex_outputs.append(reflex_act_outputs)
-    reflex_outputs = torch.stack(reflex_act_outputs)
-
-    # Weight the reflexes by activations, then sum along obs dim.
-    reflex_values = reflex_outputs * reflex_activations
-    reflex_values = torch.sum(reflex_values, dim=1)
-
-    return reflex_values
-    

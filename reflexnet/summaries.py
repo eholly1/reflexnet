@@ -37,14 +37,21 @@ def init_summary_log_dir(log_dir):
   print('Saving summaries to: {}'.format(log_dir))
   _summary_log_dir = log_dir
 
-def add_scalar(name, value, global_step):
+def _add_summary_value(add_fn):
   global _active_scopes
   if len(_active_scopes) == 0:
     with Scope() as current_scope:
-      current_scope._add_scalar(name, value, global_step)
+      add_fn(current_scope)
   else:
     current_scope = _active_scopes[-1]
-    current_scope._add_scalar(name, value, global_step)
+    add_fn(current_scope)
+
+def add_scalar(name, value, global_step):
+  _add_summary_value(lambda scope: scope._add_scalar(name, value, global_step))
+
+def add_histogram(name, value, global_step):
+  _add_summary_value(lambda scope: scope._add_histogram(name, value, global_step))
+
 
 _active_scopes = []
 class Scope(object):
@@ -56,16 +63,27 @@ class Scope(object):
     self._name = name
     self._path = path
     self._scalar_summaries = {}
+    self._histogram_summaries = {}
 
   def _add_scalar(self, name, value, global_step):
-    if name not in self._scalar_summaries  :
-      self._scalar_summaries  [name] = (value, global_step, 1)
+    if name not in self._scalar_summaries:
+      self._scalar_summaries[name] = (value, global_step, 1)
     else:
       old_value, old_global_step, old_count = self._scalar_summaries  [name]
       new_count = old_count + 1
       new_value = (old_value * old_count + value) / new_count
       new_global_step = max(old_global_step, global_step)
       self._scalar_summaries[name] = (new_value, new_global_step, new_count)
+
+  def _add_histogram(self, name, value, global_step):
+    if name not in self._histogram_summaries:
+      self._histogram_summaries[name] = (value, global_step)
+    else:
+      old_value, old_global_step = self._histogram_summaries[name]
+      self._histogram_summaries[name] = (
+        old_value + value,
+        max(old_global_step, global_step)
+        )
 
   def __enter__(self):
     global _active_scopes
@@ -84,5 +102,7 @@ class Scope(object):
     summary_writer = SummaryWriter(self._path)
     for name, (value, global_step, _) in self._scalar_summaries.items():
       summary_writer.add_scalar(os.path.join(self._name, name), value, global_step)
+    for name, (value, global_step) in self._histogram_summaries.items():
+      summary_writer.add_histogram(os.path.join(self._name, name), value, global_step)
     del _active_scopes[-1]  
   

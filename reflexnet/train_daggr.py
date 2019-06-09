@@ -4,11 +4,16 @@ import os
 import roboschool
 import torch
 
-from behavioral_cloning import BCTrainer, BCFrameDataset
+import behavioral_cloning
 import policy
 import rollouts
 import summaries
 import utils
+
+TRAINING_CLASSES = {
+  'MLP': (behavioral_cloning.BCTrainer, policy.FeedForwardPolicy),
+  'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
+}
 
 def train_daggr(
   log_dir,
@@ -18,12 +23,14 @@ def train_daggr(
   learning_rate,
   train_steps,
   eval_every,
+  training_type,
   ):
+  trainer_cls, policy_cls = TRAINING_CLASSES[training_type]
   summaries.init_summary_log_dir(log_dir)
-  dataset = BCFrameDataset(batch_size, demo_filepath)
+  dataset = behavioral_cloning.BCFrameDataset(batch_size, demo_filepath)
   env = gym.make(env_name)
-  training_policy = policy.FeedForwardPolicy.for_env(env)
-  trainer = BCTrainer(
+  training_policy = policy_cls.for_env(env)
+  trainer = trainer_cls(
     model=training_policy,
     dataset=dataset,
     learning_rate=learning_rate,
@@ -58,6 +65,7 @@ def main():
   parser.add_argument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
   parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Parent directory under which to save output.')
   parser.add_argument('--demo_filepath', required=True, type=str, help='Full path to file with task demos.')
+  parser.add_argument('--training_type', default='MLP', type=str, help='The type of policy to train.')
   parser.add_argument('--batch_size', default=16, type=int, help='Batch size for SGD.')
   parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')
   parser.add_argument('--train_steps', default=30000, type=int, help='Total number of train steps.')

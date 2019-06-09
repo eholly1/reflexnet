@@ -32,10 +32,21 @@ class Trainer(ABC):
     self._model = model
     assert issubclass(dataset.__class__, Dataset)
     self._dataset = dataset
-    self._optimizer = optim_cls(
-      params=self._model.parameters(),
-      lr=learning_rate)
+    self._optimizers = [
+      optim_cls(params=p, lr=learning_rate)
+      for p in self._parameters()
+    ]
     self._global_step = 0
+
+  @abstractmethod
+  def _parameters(self):
+    """Get the parameters to train.
+      Returns: A list of parameter iterators. Each iterator in
+        the list should be given its own optimizer. The the parameter
+        iterators in order correspond to the loss functions returned by
+        inference_and_loss.
+    """
+    raise NotImplementedError
 
   @abstractmethod
   def _inference_and_loss(self, sample_data):
@@ -43,7 +54,8 @@ class Trainer(ABC):
     Args:
       sample_data: A sample of data with which to compute loss.
     Returns:
-      A scalar loss tensor.
+      A list of loss Tensors, corresponding element-wise to the list of
+        optimizers.
     """
     raise NotImplementedError
 
@@ -105,12 +117,13 @@ class Trainer(ABC):
 
   def _train(self):
     start_time = time.time()
-    self._optimizer.zero_grad()
     self._model.train()  # Put model in train mode.
     sample_data = self._dataset.sample()
-    loss = self._inference_and_loss(sample_data)
-    loss.backward()
-    self._optimizer.step()
+    losses = self._inference_and_loss(sample_data)
+    for opt, loss in zip(self._optimizers, losses):
+      opt.zero_grad()
+      loss.backward()
+      opt.step()
 
     # Summarize timing.
     total_time = time.time() - start_time

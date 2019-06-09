@@ -2,6 +2,7 @@ import numpy as np
 import os
 import torch
 
+import policy
 import summaries
 import trainer
 import utils
@@ -81,10 +82,14 @@ class BCTrainer(trainer.Trainer):
         self._loss_fn = kwargs['loss_fn']
       del kwargs['loss_fn']
     super().__init__(*args, **kwargs)
+    assert issubclass(type(self._model), policy.TorchPolicy)
 
   @property
   def policy(self):
     return self.model
+
+  def _parameters(self):
+    return [self._model.parameters()]
 
   def _inference_and_loss(self, sample_data):
     pred_act = self.policy(sample_data['obs'])
@@ -93,3 +98,41 @@ class BCTrainer(trainer.Trainer):
     summaries.add_scalar('_performance/loss', loss, self.global_step)
     return loss
 
+# DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
+DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
+class ReflexBCTrainer(trainer.Trainer):
+
+  def __init__(self, *args, **kwargs):
+    if 'loss_fn' not in kwargs or kwargs['loss_fn'] is None:
+      self._loss_fn = DEFAULT_BC_LOSS_FN
+    if 'loss_fn' in kwargs:
+      if kwargs['loss_fn'] is not None:
+        self._loss_fn = kwargs['loss_fn']
+      del kwargs['loss_fn']
+    super().__init__(*args, **kwargs)
+    assert issubclass(type(self._model), policy.ReflexPolicy)
+
+  @property
+  def policy(self):
+    return self.model
+
+  def _parameters(self):
+    return list(self._model.parameters())
+
+  def _inference_and_loss(self, sample_data):
+    # Compute bc_loss.
+    pred_act = self.policy(sample_data['obs'])
+    expert_act = sample_data['act']
+    bc_loss = self._loss_fn(pred_act, expert_act)
+    summaries.add_scalar('_performance/bc_loss', bc_loss, self.global_step)
+
+    reflex_outputs = self.policy.reflex_outputs(sample_data['obs'])
+    unweighted_reflexes_loss = self._loss_fn(reflex_outputs, torch.unsqueeze(expert_act, dim=-1))
+    reflex_softmax_weights = self.policy.reflex_softmax_weights(sample_data['obs'])
+    weighted_reflexes_loss = unweighted_reflexes_loss * reflex_softmax_weights
+    reflexes_loss = torch.mean(torch.sum(weighted_reflexes_loss, dim=-1))
+
+    summaries.add_scalar('_performance/reflexes_loss', reflexes_loss, self.global_step)
+    summaries.add_histogram('reflexes/softmax_weights', reflex_softmax_weights, self.global_step)
+
+    return bc_loss, reflexes_loss
