@@ -126,6 +126,7 @@ class ReflexBCTrainer(trainer.Trainer):
     bc_loss = self._loss_fn(pred_act, expert_act)
     summaries.add_scalar('_performance/bc_loss', bc_loss, self.global_step)
 
+    # Compute reflex_loss.
     reflex_outputs = self.policy.reflex_outputs(sample_data['obs'])
     unweighted_reflexes_loss = self._loss_fn(reflex_outputs, torch.unsqueeze(expert_act, dim=-1))
     reflex_softmax_weights = self.policy.reflex_softmax_weights(sample_data['obs'])
@@ -134,5 +135,13 @@ class ReflexBCTrainer(trainer.Trainer):
 
     summaries.add_scalar('_performance/reflexes_loss', reflexes_loss, self.global_step)
     summaries.add_histogram('reflexes/softmax_weights', reflex_softmax_weights, self.global_step)
+
+    reflex_conditional_entropy = -torch.sum(reflex_softmax_weights * torch.log(reflex_softmax_weights), dim=-1)
+    summaries.add_histogram('reflexes/reflex_conditional_entropy', reflex_softmax_weights, self.global_step)
+    reflex_marginals = torch.mean(reflex_softmax_weights, dim=0)
+    reflex_marginal_entropy = -torch.sum(reflex_marginals * torch.log(reflex_marginals), dim=-1)
+    summaries.add_histogram('reflexes/reflex_marginal_entropy', reflex_marginal_entropy, self.global_step)
+     
+
 
     return bc_loss, reflexes_loss
