@@ -120,9 +120,9 @@ class Trainer(ABC):
     self._model.train()  # Put model in train mode.
     sample_data = self._dataset.sample()
     losses = self._inference_and_loss(sample_data)
-    for opt, loss in zip(self._optimizers, losses):
+    for i, (opt, loss) in enumerate(zip(self._optimizers, losses)):
       opt.zero_grad()
-      loss.backward()
+      loss.backward(retain_graph=(i+1 == len(losses)))
       opt.step()
 
     # Summarize timing.
