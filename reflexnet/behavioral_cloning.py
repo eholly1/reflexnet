@@ -141,7 +141,7 @@ class ReflexBCTrainer(trainer.Trainer):
     reflex_marginals = torch.mean(reflex_softmax_weights, dim=0)
     reflex_marginal_entropy = -torch.sum(reflex_marginals * torch.log(reflex_marginals), dim=-1)
     summaries.add_histogram('reflexes/reflex_marginal_entropy', reflex_marginal_entropy, self.global_step)
-    reflex_entropy_loss = 1.0 - torch.mean(reflex_marginal_entropy)
+    reflex_entropy_loss = -torch.mean(reflex_marginal_entropy) * 0.01
 
     supervisor_loss = bc_loss + reflex_entropy_loss
 
