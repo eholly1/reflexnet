@@ -24,10 +24,11 @@ def train_daggr(
   train_steps,
   eval_every,
   training_type,
+  max_buffer_size,
   ):
   trainer_cls, policy_cls = TRAINING_CLASSES[training_type]
   summaries.init_summary_log_dir(log_dir)
-  dataset = behavioral_cloning.BCFrameDataset(batch_size, demo_filepath)
+  dataset = behavioral_cloning.BCFrameDataset(batch_size, demo_filepath, max_size=max_buffer_size)
   env = gym.make(env_name)
   training_policy = policy_cls.for_env(env)
   trainer = trainer_cls(
@@ -69,6 +70,7 @@ def main():
   parser.add_argument('--batch_size', default=16, type=int, help='Batch size for SGD.')
   parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')
   parser.add_argument('--train_steps', default=30000, type=int, help='Total number of train steps.')
+  parser.add_argument('--max_buffer_size', default=10000000, type=int, help='Total number of train steps.')
   parser.add_argument('--eval_every', default=None, type=int, help='Eval after this many train steps.')
   args = parser.parse_args()
 

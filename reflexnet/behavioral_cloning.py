@@ -10,8 +10,9 @@ import utils
 # TODO(eholly1): Make generic torch in-memory Dataset class.
 class BCFrameDataset(trainer.Dataset):
 
-  def __init__(self, batch_size, load_path, eval_fraction=0.2):
+  def __init__(self, batch_size, load_path, eval_fraction=0.2, max_size=None):
     self._batch_size = batch_size
+    self._max_size = max_size
 
     if os.path.isfile(load_path):
       rollout_data = torch.load(load_path)
@@ -51,6 +52,11 @@ class BCFrameDataset(trainer.Dataset):
     self._act = torch.cat([rollout_data['act'], self._act], dim=0)
     self._N += rollout_data['obs'].shape[0]
     self._train_cutoff = int(self.N * (1.0 - self._eval_fraction))
+
+    if self._N > self._max_size:
+      self._N = self._max_size
+      self._obs = self._obs[:self._N]
+      self._act = self._act[:self._N]
 
   def sample(self, batch_size=None, eval=False):
     if batch_size is None:
