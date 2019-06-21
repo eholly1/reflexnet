@@ -15,7 +15,7 @@ TRAINING_CLASSES = {
   'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
 }
 
-def train_daggr(
+def train_daggr( 
   log_dir,
   env_name,
   demo_filepath,
