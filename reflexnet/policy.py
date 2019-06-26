@@ -94,72 +94,52 @@ class FeedForwardPolicy(TorchPolicy):
 class ReflexPolicy(TorchPolicy):
 
   @staticmethod
-  def for_env(
-    gym_env,
-    num_reflexes=5,
-    ref_layers_config=[16],
-    sup_layers_config=[],
-    emb_layers_config=[32, 32],
-    emb_size=3):
+  def for_env(gym_env, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
     obs_size = gym_env.observation_space.shape[0]
     act_size = gym_env.action_space.shape[0]
     return ReflexPolicy(
       obs_size, act_size, num_reflexes=num_reflexes,
       ref_layers_config=ref_layers_config, sup_layers_config=sup_layers_config)
 
-  def __init__(
-    self,
-    obs_size,
-    act_size,
-    num_reflexes=5,
-    ref_layers_config=[16],
-    sup_layers_config=[],
-    emb_layers_config=[32, 32],
-    emb_size=3):
-
+  def __init__(self, obs_size, act_size, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
     super().__init__()
     self._obs_size = obs_size
     self._act_size = act_size
-    self._emb_size = emb_size
     self._num_reflexes = num_reflexes
-
-    self._embedding = network.FeedForward(obs_size, emb_size, layers_config=emb_layers_config)
 
     # Make reflex subnetworks. For each action dimension, there is a subnetwork 
     self._reflexes = []
     for a in range(act_size):
       action_reflexes = []
       for r in range(self._num_reflexes):
-        action_reflexes.append(network.FeedForward(emb_size, 1, layers_config=ref_layers_config))
+        action_reflexes.append(network.FeedForward(obs_size, 1, layers_config=ref_layers_config))
       action_reflexes = torch.nn.ModuleList(action_reflexes)
       self._reflexes.append(action_reflexes)
     self._reflexes = torch.nn.ModuleList(self._reflexes)
 
     # Network for selecting amongst reflexes, given observation.
-    self._supervisor = network.FeedForward(emb_size, act_size * num_reflexes, layers_config=sup_layers_config)
+    self._supervisor = network.FeedForward(obs_size, act_size * num_reflexes, layers_config=sup_layers_config)
     self._softmax = torch.nn.Softmax(dim=-1)
 
   def parameters(self):
     return self._supervisor.parameters(), self._reflexes.parameters()
 
   def reflex_softmax_weights(self, obs):
-    emb = self._embedding(obs)
     if len(obs.shape) == 1:
-      reflex_logits = self._supervisor(emb).view(self._act_size, self._num_reflexes)
+      reflex_logits = self._supervisor(obs).view(self._act_size, self._num_reflexes)
     elif len(obs.shape) == 2:
-      reflex_logits = self._supervisor(emb).view(-1, self._act_size, self._num_reflexes)
+      reflex_logits = self._supervisor(obs).view(-1, self._act_size, self._num_reflexes)
     else:
       raise ValueError('ReflexPolicy currently only supports observations with one or no batch dimensions')
 
     return self._softmax(reflex_logits)  # Softmax over reflex dimension.
 
   def reflex_outputs(self, obs):
-    emb = self._embedding(obs)
     reflex_outputs = []
     for r in range(self._num_reflexes):
       action_outputs = []
       for a in range(self._act_size):
-        action_outputs.append(self._reflexes[a][r](emb))
+        action_outputs.append(self._reflexes[a][r](obs))
       action_outputs = torch.cat(action_outputs, dim=-1)
       reflex_outputs.append(action_outputs)
     reflex_outputs = torch.stack(reflex_outputs, dim=-1)

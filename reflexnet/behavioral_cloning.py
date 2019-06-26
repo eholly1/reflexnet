@@ -10,7 +10,7 @@ import utils
 # TODO(eholly1): Make generic torch in-memory Dataset class.
 class BCFrameDataset(trainer.Dataset):
 
-  def __init__(self, batch_size, load_path, eval_fraction=0.2, max_size=None):
+  def __init__(self, batch_size, load_path, eval_fraction=0.2, max_size=200000):
     self._batch_size = batch_size
     self._max_size = max_size
 
@@ -24,10 +24,10 @@ class BCFrameDataset(trainer.Dataset):
     self._init_dataset_with_rollout_data(rollout_data)
     self._eval_fraction = eval_fraction
     self._update_train_cutoff()
-
+    
   def _update_train_cutoff(self):
     self._train_cutoff = int(self.N * (1.0 - self._eval_fraction))
-    
+
   @property
   def N(self):
     return self._N
@@ -61,7 +61,6 @@ class BCFrameDataset(trainer.Dataset):
       self._obs = self._obs[:self._N]
       self._act = self._act[:self._N]
       self._update_train_cutoff()
-    print(self._obs.shape, self._act.shape)
 
   def sample(self, batch_size=None, eval=False):
     if batch_size is None:
@@ -107,7 +106,7 @@ class BCTrainer(trainer.Trainer):
     expert_act = sample_data['act']
     loss = self._loss_fn(pred_act, expert_act)
     summaries.add_scalar('_performance/loss', loss, self.global_step)
-    return [loss]
+    return loss
 
 # DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
 DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
@@ -152,9 +151,7 @@ class ReflexBCTrainer(trainer.Trainer):
     reflex_marginals = torch.mean(reflex_softmax_weights, dim=0)
     reflex_marginal_entropy = -torch.sum(reflex_marginals * torch.log(reflex_marginals), dim=-1)
     summaries.add_histogram('reflexes/reflex_marginal_entropy', reflex_marginal_entropy, self.global_step)
-    # reflex_entropy_loss = -torch.mean(reflex_marginal_entropy) * 0.1
 
     supervisor_loss = bc_loss
-    # supervisor_loss = bc_loss + reflex_entropy_loss
 
     return supervisor_loss, reflexes_loss
