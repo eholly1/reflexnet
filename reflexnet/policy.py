@@ -94,7 +94,7 @@ class FeedForwardPolicy(TorchPolicy):
 class ReflexPolicy(TorchPolicy):
 
   @staticmethod
-  def for_env(gym_env, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
+  def for_env(gym_env, num_reflexes=25, ref_layers_config=[16], sup_layers_config=[32]):
     obs_size = gym_env.observation_space.shape[0]
     act_size = gym_env.action_space.shape[0]
     return ReflexPolicy(
