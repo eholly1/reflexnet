@@ -1,5 +1,6 @@
 from abc import abstractmethod
 import itertools
+import numpy as np
 import os
 import scipy
 import torch
@@ -8,6 +9,13 @@ import network
 
 
 class TorchPolicy(torch.nn.Module):
+
+  @classmethod
+  def for_env(cls, gym_env, *args, **kwargs):
+    obs_size = gym_env.observation_space.shape[0]
+    act_size = gym_env.action_space.shape[0]
+    return ReflexPolicy(
+      obs_size, act_size, *args, **kwargs)
 
   def __call__(self, obs):
     if not isinstance(obs, torch.Tensor):
@@ -73,12 +81,6 @@ class TorchPolicy(torch.nn.Module):
 
 class FeedForwardPolicy(TorchPolicy):
 
-  @staticmethod
-  def for_env(gym_env, layers_config=[64, 64]):
-    obs_size = gym_env.observation_space.shape[0]
-    act_size = gym_env.action_space.shape[0]
-    return FeedForwardPolicy(obs_size, act_size, layers_config)
-
   def __init__(self, obs_size, act_size, layers_config=[64, 64]):
     super().__init__()
     self._model = network.FeedForward(
@@ -92,20 +94,6 @@ class FeedForwardPolicy(TorchPolicy):
 
 
 class ReflexPolicy(TorchPolicy):
-
-  @staticmethod
-  def for_env(
-    gym_env,
-    num_reflexes=5,
-    ref_layers_config=[16],
-    sup_layers_config=[],
-    emb_layers_config=[32, 32],
-    emb_size=3):
-    obs_size = gym_env.observation_space.shape[0]
-    act_size = gym_env.action_space.shape[0]
-    return ReflexPolicy(
-      obs_size, act_size, num_reflexes=num_reflexes,
-      ref_layers_config=ref_layers_config, sup_layers_config=sup_layers_config)
 
   def __init__(
     self,
@@ -171,28 +159,42 @@ class ReflexPolicy(TorchPolicy):
     weighted_reflex_outputs =  reflex_outputs * reflex_softmax_weights
     action_outputs = torch.sum(weighted_reflex_outputs, dim=-1)
     return action_outputs
-    
 
-class MetricPolicy(TorchPolicy):
 
-  def __init__(self, obs_size, embedding_size, data, layers_config=[64, 64], k=1):
+class ICPPolicy(TorchPolicy):
+
+  def __init__(
+    self,
+    obs_size,
+    act_size,
+    num_prims=25,
+    layers_config=[16],
+    latent_size=5,
+    ):
     super().__init__()
-    self._model = network.FeedForward(
-      input_size=obs_size,
-      output_size=embedding_size,
-    )
-    self._data = data
-    self._kdtree = None
-    self._k = k
+    self._num_prims = num_prims
+    self._prims = torch.ModuleList([
+      network.LatentGaussianNetwork(obs_size, act_size, layers_config, latent_size=latent_size)
+      for _ in range(self._num_prims)
+      ])
+    self._softmax = torch.nn.Softmax(dim=-1)
 
-  def get_embedding(self, obs):
-    return self._model(obs)
-
-  def rebuild(self):
-    embeddings = self.get_embedding(data["obs"])
-    self._kdtree = scipy.spatial.KDTree(embeddings)
+  @property
+  def num_prims(self):
+    return self._num_prims
 
   def forward(self, obs):
-    embedding = self.get_embedding(obs)
-    neighbor_dists, neighbor_idxs = self._kdtree.query(embedding, k)
-    action = self._data[neighbor_idxs[0]]
+    prim_output, unused_sm, unused_latent_l2 = self.forward_full(obs)
+    return prim_output
+
+  def forward_full(self, obs):
+    logits = torch.stack(
+      [prim.latent_l2(obs) for prim in self._prims],
+      dim=-1)
+    sm = self._softmax(logits)
+    prim_selection = np.random.choice(
+      a=range(self._num_prims),
+      p=sm,
+    )
+    prim_output, latent_l2 = self._prims[prim_selection].forward_full(obs)
+    return prim_output, sm, latent_l2

@@ -104,8 +104,6 @@ class BCTrainer(trainer.Trainer):
     summaries.add_scalar('_performance/loss', loss, self.global_step)
     return [loss]
 
-# DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
-DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
 class ReflexBCTrainer(trainer.Trainer):
 
   def __init__(self, *args, **kwargs):
@@ -153,3 +151,59 @@ class ReflexBCTrainer(trainer.Trainer):
     # supervisor_loss = bc_loss + reflex_entropy_loss
 
     return supervisor_loss, reflexes_loss
+
+class ICPBCTrainer(trainer.Trainer):
+
+  def __init__(self, *args, **kwargs):
+    if 'loss_fn' not in kwargs or kwargs['loss_fn'] is None:
+      self._loss_fn = DEFAULT_BC_LOSS_FN
+    if 'loss_fn' in kwargs:
+      if kwargs['loss_fn'] is not None:
+        self._loss_fn = kwargs['loss_fn']
+      del kwargs['loss_fn']
+    super().__init__(*args, **kwargs)
+    assert issubclass(type(self._model), policy.ICPPolicy)
+    
+    self._beta_ib = torch.tensor(0.01)
+    self._beta_entropy = torch.tensor(0.01)
+
+    # Set target entropy as 0.5 of the maximum possible entropy with this number of primitives.
+    num_prims = self.policy.num_prims
+    max_entropy = utils.batch_softmax_entropy(torch.tensor([1.0 / num_prims] * num_prims))
+    self._target_entropy = max_entropy * 0.5
+
+  @property
+  def policy(self):
+    return self.model
+
+  def _parameters(self):
+    return list(self._model.parameters())
+
+  def _inference_and_loss(self, sample_data):
+    # Compute bc_loss.
+    pred_act, softmax_weights, latent_l2 = self.policy.forward_full(sample_data['obs'])
+    expert_act = sample_data['act']
+    bc_loss = self._loss_fn(pred_act, expert_act)
+    summaries.add_scalar('_performance/bc_loss', bc_loss, self.global_step)
+
+    # IB Loss
+    ib_loss = self._beta_ib * torch.mean(latent_l2)
+    summaries.add_scalar('_performance/ib_loss', ib_loss, self.global_step)
+
+    # Entropy Loss
+    entropy = utils.batch_softmax_entropy(softmax_weights)
+    summaries.add_scalar('misc/entropy', entropy, self.global_step)
+    entropy_loss = self._beta_entropy * -entropy
+    summaries.add_scalar('_performance/entropy_loss', entropy_loss, self.global_step)
+
+    summaries.add_scalar('misc/beta_ib', self._beta_ib, self.global_step)
+    summaries.add_scalar('misc/beta_entropy', self._beta_entropy, self.global_step)
+
+    # If entropy is too low, increase regularizer.
+    if entropy < self._target_entropy / 1.3:
+      self._beta_entropy *= 1.5
+    # If entropy is too low, decrease regularizer.
+    if entropy > self._target_entropy * 1.3:
+      self._beta_entropy /= 1.5
+
+    return 

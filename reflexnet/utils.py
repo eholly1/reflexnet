@@ -111,3 +111,17 @@ def init_log_dir(args):
   # Write args to args.log_dir/args.json
   with open(os.path.join(args.log_dir, 'args.json'), 'w') as args_file:
     json.dump(vars(args), args_file)
+
+def batch_softmax_entropy(softmax_weights):
+  # Compute the entropy of the sotfmax distribution, across the batch.
+  # Args:
+  #   softmax_weights: A tensor of softmax_weights, assumed all dimensions
+  #   but the last are batch dimensions.
+  # Returns:
+  #   Scalar float tensor containing the entropy.
+  
+  # Flatten batch dims.
+  softmax_weights = softmax_weights.view(-1, softmax_weights.shape[-1])
+  mean_softmax_weights = softmax_weights.mean(0)
+  entropy = torch.sum(mean_softmax_weights * torch.log(mean_softmax_weights))
+  return entropy
