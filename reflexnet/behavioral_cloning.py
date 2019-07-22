@@ -106,7 +106,7 @@ class BCTrainer(trainer.Trainer):
     expert_act = sample_data['act']
     loss = self._loss_fn(pred_act, expert_act)
     summaries.add_scalar('_performance/loss', loss, self.global_step)
-    return loss
+    return loss,
 
 # DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
 DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
