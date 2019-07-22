@@ -101,7 +101,7 @@ class ReflexPolicy(TorchPolicy):
       obs_size, act_size, num_reflexes=num_reflexes,
       ref_layers_config=ref_layers_config, sup_layers_config=sup_layers_config)
 
-  def __init__(self, obs_size, act_size, num_reflexes=5, ref_layers_config=[16], sup_layers_config=[32, 32]):
+  def __init__(self, obs_size, act_size, num_reflexes=25, ref_layers_config=[16], sup_layers_config=[32, 32]):
     super().__init__()
     self._obs_size = obs_size
     self._act_size = act_size

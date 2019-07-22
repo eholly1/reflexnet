@@ -30,6 +30,12 @@ def train_daggr(
   dataset = behavioral_cloning.BCFrameDataset(batch_size, demo_filepath)
   env = gym.make(env_name)
   training_policy = policy_cls.for_env(env)
+
+  import numpy as np
+  total_params = 0
+  for pg in training_policy.parameters():
+    for p in pg:
+      total_params += np.product(p.shape) 
   trainer = trainer_cls(
     model=training_policy,
     dataset=dataset,
