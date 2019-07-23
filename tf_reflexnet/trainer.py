@@ -4,7 +4,7 @@ import time
 from tqdm import tqdm
 
 import summaries
-import torch
+import tensorflow as tf
 
 class Dataset(ABC):
 
@@ -24,8 +24,6 @@ class Trainer(ABC):
     - Checkpointing.
     - Gathering and saving summaries.
   """
-  # TODO(eholly1): Checkpointing.
-  # TODO(eholly1): Summaries.
 
   def __init__(self, model, dataset, optim_cls=torch.optim.Adam, learning_rate=1e-5):
     assert issubclass(type(model), torch.nn.Module)
@@ -117,7 +115,6 @@ class Trainer(ABC):
 
   def _train(self):
     start_time = time.time()
-    self._model.train()  # Put model in train mode.
     sample_data = self._dataset.sample()
     losses = self._inference_and_loss(sample_data)
     for i, (opt, loss) in enumerate(zip(self._optimizers, losses)):
