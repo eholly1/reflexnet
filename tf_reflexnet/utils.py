@@ -8,6 +8,12 @@ from torch.nn.utils.rnn import PackedSequence
 
 import RoboschoolWalker2d_v1_2017jul
 
+def tf_placeholder_for_tensor(nested_tensor):
+  return tree_apply(
+    lambda tensor: tf.compat.v1.placeholder(tf.float32, tensor.shape),
+    nested_tensor,
+  )
+
 def merge_packed_sequences(*packed_sequences):
   max_length = max(*[len(s.batch_sizes) for s in packed_sequences])
   padded_sequences_and_lengths = [
@@ -63,7 +69,10 @@ def tree_apply(fn, *tree_nodes):
     for i in range(len(tree_nodes[0])):
       ret_val.append(tree_apply(fn, *[tn[i] for tn in tree_nodes]))
     return ret_val
-  if isinstance(tree_nodes[0], torch.Tensor) or isinstance(tree_nodes[0], PackedSequence):
+  if (
+    isinstance(tree_nodes[0], torch.Tensor) or
+    isinstance(tree_nodes[0], PackedSequence) or 
+    isinstance(tree_nodes[0], tf.Tensor)):
     return fn(*tree_nodes)
   return fn(*tree_nodes)
 

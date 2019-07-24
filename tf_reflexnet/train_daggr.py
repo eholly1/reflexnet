@@ -5,6 +5,7 @@ import roboschool
 import torch
 
 import behavioral_cloning
+import numpy as np
 import policy
 import rollouts
 import summaries
@@ -12,7 +13,7 @@ import utils
 
 TRAINING_CLASSES = {
   'MLP': (behavioral_cloning.BCTrainer, policy.FeedForwardPolicy),
-  'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
+  # 'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
 }
 
 def train_daggr(
@@ -31,7 +32,6 @@ def train_daggr(
   env = gym.make(env_name)
   training_policy = policy_cls.for_env(env)
 
-  import numpy as np
   total_params = 0
   for pg in training_policy.parameters():
     for p in pg:

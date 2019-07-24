@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import summaries
 import tensorflow as tf
+import utils
 
 class Dataset(ABC):
 
@@ -25,14 +26,13 @@ class Trainer(ABC):
     - Gathering and saving summaries.
   """
 
-  def __init__(self, model, dataset, optim_cls=torch.optim.Adam, learning_rate=1e-5):
-    assert issubclass(type(model), torch.nn.Module)
+  def __init__(self, model, dataset, optim_cls=tf.train.AdamOptimizer, learning_rate=1e-5):
     self._model = model
     assert issubclass(dataset.__class__, Dataset)
     self._dataset = dataset
     self._optimizers = [
-      optim_cls(params=p, lr=learning_rate)
-      for p in self._parameters()
+      optim_cls(learning_rate=learning_rate)
+      for _ in self._parameters()
     ]
     self._global_step = 0
 
@@ -72,41 +72,59 @@ class Trainer(ABC):
     eval_every=None,
     after_eval_callback=None,
     ):
-    if eval_every is None:
-      eval_every = int(train_steps / 20)
-    self._global_step = 0
+    with tf.compat.v1.Session().as_default():
+      if eval_every is None:
+        eval_every = int(train_steps / 20)
+      self._global_step = 0
 
-    # Initial eval.
-    self.print('Running initial eval.')
-    with summaries.Scope(path='eval'):
-      self._eval()
-    if after_eval_callback:
-        after_eval_callback()
+      # Make data input placeholders.
+      sample_data = self._dataset.sample()
+      eval_sample_data = self._dataset.sample(batch_size=float('inf'), eval=True)
+      self._sample_placeholder = utils.tf_placeholder_for_tensor(sample_data)
+      self._eval_sample_placeholder = utils.tf_placeholder_for_tensor(eval_sample_data)
 
-    self._model.save(os.path.join(log_dir, 'policy'))    
+      # Create loss tensors.
+      self._train_losses = self._inference_and_loss(self._sample_placeholder)
+      self._eval_losses = self._inference_and_loss(self._eval_sample_placeholder)
 
-    # Training Iterations
-    while self.global_step < train_steps:
+      # Create train_op.
+      minimize_ops = [
+        opt.minimize(loss, var_list=params)
+        for opt, params, loss in zip(self._optimizers, self._parameters(), self._train_losses)
+        ]
+      self._train_op = tf.group(minimize_ops)
 
-      # Run training.
-      self.print('Running training.')
-      with summaries.Scope(path='train'):
-        for _ in tqdm(range(eval_every)):
-          self._global_step += 1
-          self._train()
-          if self.global_step >= train_steps:
-            break
-
-      # Perform eval.
-      self.print('Running eval.')
+      # Initial eval.
+      self.print('Running initial eval.')
       with summaries.Scope(path='eval'):
         self._eval()
-
-      self._model.save(os.path.join(log_dir, 'policy'))
-
-      # After eval callback.
       if after_eval_callback:
-        after_eval_callback()
+          after_eval_callback()
+
+      self._model.save(os.path.join(log_dir, 'policy'))    
+
+      # Training Iterations
+      while self.global_step < train_steps:
+
+        # Run training.
+        self.print('Running training.')
+        with summaries.Scope(path='train'):
+          for _ in tqdm(range(eval_every)):
+            self._global_step += 1
+            self._train()
+            if self.global_step >= train_steps:
+              break
+
+        # Perform eval.
+        self.print('Running eval.')
+        with summaries.Scope(path='eval'):
+          self._eval()
+
+        self._model.save(os.path.join(log_dir, 'policy'))
+
+        # After eval callback.
+        if after_eval_callback:
+          after_eval_callback()
 
   def print(self, *args):
     args = ["[{}]\t".format(self.global_step)] + list(args)
@@ -116,11 +134,12 @@ class Trainer(ABC):
   def _train(self):
     start_time = time.time()
     sample_data = self._dataset.sample()
-    losses = self._inference_and_loss(sample_data)
-    for i, (opt, loss) in enumerate(zip(self._optimizers, losses)):
-      opt.zero_grad()
-      loss.backward(retain_graph=(i+1 != len(losses)))
-      opt.step()
+
+    train_outputs = tf.compat.v1.get_default_session().run(
+      [self._train_op] + self._train_losses,
+      feed_dict={self._sample_placeholder: sample_data}
+    )
+    loss_values = train_outputs[1:]
 
     # Summarize timing.
     total_time = time.time() - start_time
@@ -131,10 +150,12 @@ class Trainer(ABC):
 
   def _eval(self):
     with torch.no_grad():
-      self._model.eval()  # Put model in eval mode.
       start_time = time.time()
       sample_data = self._dataset.sample(batch_size=float('inf'), eval=True)
-      loss = self._inference_and_loss(sample_data)
+      loss_values = tf.compat.v1.get_default_session().run(
+        self._eval_losses,
+        feed_dict={self._eval_sample_placeholder: sample_data}
+      )
       total_time = time.time() - start_time
 
     # Summarize timing.

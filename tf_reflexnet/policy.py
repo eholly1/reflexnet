@@ -7,7 +7,7 @@ import tensorflow as tf
 import network
 
 
-class TFPolicy(torch.nn.Module):
+class TFPolicy:
 
   def __call__(self, obs):
     if isinstance(obs, tf.Tensor):
@@ -46,11 +46,17 @@ class TFPolicy(torch.nn.Module):
   def model(self):
     raise NotImplementedError
 
+  @abstractmethod
+  def parameters(self):
+    raise NotImplementedError
+
   def forward(self, obs):
     return self.model(obs)
 
 
-class FeedForwardPolicy(TorchPolicy):
+class FeedForwardPolicy(TFPolicy):
+
+  __scope__ = "feedforward"
 
   @staticmethod
   def for_env(gym_env, layers_config=[64, 64]):
@@ -60,98 +66,15 @@ class FeedForwardPolicy(TorchPolicy):
 
   def __init__(self, obs_size, act_size, layers_config=[64, 64]):
     super().__init__()
-    self._model = network.FeedForward(
-      input_size=obs_size,
-      output_size=act_size,
-      layers_config=layers_config)
+    with tf.compat.v1.variable_scope(self.__scope__):
+      self._model = network.FeedForward(
+        input_size=obs_size,
+        output_size=act_size,
+        layers_config=layers_config)
+
+  def parameters(self):
+    return tf.compat.v1.trainable_variables(self.__scope__)
 
   @property
   def model(self):
     return self._model
-
-
-# class ReflexPolicy(TorchPolicy):
-
-#   @staticmethod
-#   def for_env(gym_env, num_reflexes=25, ref_layers_config=[16], sup_layers_config=[32]):
-#     obs_size = gym_env.observation_space.shape[0]
-#     act_size = gym_env.action_space.shape[0]
-#     return ReflexPolicy(
-#       obs_size, act_size, num_reflexes=num_reflexes,
-#       ref_layers_config=ref_layers_config, sup_layers_config=sup_layers_config)
-
-#   def __init__(self, obs_size, act_size, num_reflexes=25, ref_layers_config=[16], sup_layers_config=[32, 32]):
-#     super().__init__()
-#     self._obs_size = obs_size
-#     self._act_size = act_size
-#     self._num_reflexes = num_reflexes
-
-#     # Make reflex subnetworks. For each action dimension, there is a subnetwork 
-#     self._reflexes = []
-#     for a in range(act_size):
-#       action_reflexes = []
-#       for r in range(self._num_reflexes):
-#         action_reflexes.append(network.FeedForward(obs_size, 1, layers_config=ref_layers_config))
-#       action_reflexes = torch.nn.ModuleList(action_reflexes)
-#       self._reflexes.append(action_reflexes)
-#     self._reflexes = torch.nn.ModuleList(self._reflexes)
-
-#     # Network for selecting amongst reflexes, given observation.
-#     self._supervisor = network.FeedForward(obs_size, act_size * num_reflexes, layers_config=sup_layers_config)
-#     self._softmax = torch.nn.Softmax(dim=-1)
-
-#   def parameters(self):
-#     return self._supervisor.parameters(), self._reflexes.parameters()
-
-#   def reflex_softmax_weights(self, obs):
-#     if len(obs.shape) == 1:
-#       reflex_logits = self._supervisor(obs).view(self._act_size, self._num_reflexes)
-#     elif len(obs.shape) == 2:
-#       reflex_logits = self._supervisor(obs).view(-1, self._act_size, self._num_reflexes)
-#     else:
-#       raise ValueError('ReflexPolicy currently only supports observations with one or no batch dimensions')
-
-#     return self._softmax(reflex_logits)  # Softmax over reflex dimension.
-
-#   def reflex_outputs(self, obs):
-#     reflex_outputs = []
-#     for r in range(self._num_reflexes):
-#       action_outputs = []
-#       for a in range(self._act_size):
-#         action_outputs.append(self._reflexes[a][r](obs))
-#       action_outputs = torch.cat(action_outputs, dim=-1)
-#       reflex_outputs.append(action_outputs)
-#     reflex_outputs = torch.stack(reflex_outputs, dim=-1)
-#     return reflex_outputs
-
-#   def forward(self, obs):
-#     reflex_outputs = self.reflex_outputs(obs)
-#     reflex_softmax_weights = self.reflex_softmax_weights(obs)
-#     weighted_reflex_outputs =  reflex_outputs * reflex_softmax_weights
-#     action_outputs = torch.sum(weighted_reflex_outputs, dim=-1)
-#     return action_outputs
-    
-
-# class MetricPolicy(TorchPolicy):
-
-#   def __init__(self, obs_size, embedding_size, data, layers_config=[64, 64], k=1):
-#     super().__init__()
-#     self._model = network.FeedForward(
-#       input_size=obs_size,
-#       output_size=embedding_size,
-#     )
-#     self._data = data
-#     self._kdtree = None
-#     self._k = k
-
-#   def get_embedding(self, obs):
-#     return self._model(obs)
-
-#   def rebuild(self):
-#     embeddings = self.get_embedding(data["obs"])
-#     self._kdtree = scipy.spatial.KDTree(embeddings)
-
-#   def forward(self, obs):
-#     embedding = self.get_embedding(obs)
-#     neighbor_dists, neighbor_idxs = self._kdtree.query(embedding, k)
-#     action = self._data[neighbor_idxs[0]]

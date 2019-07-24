@@ -18,7 +18,7 @@ class FeedForward:
 				self._layers.append(tf.keras.layers.Dense(layer_size, activation=hidden_activation))
 			self._layers.append(tf.keras.layers.Dense(output_size, activation=output_activation))
 		else:
-			layers = [tf.keras.layers.Dense(output_size, activation=output_activation, input_shape[input_size])]
+			layers = [tf.keras.layers.Dense(output_size, activation=output_activation, input_shape=[input_size])]
 
 	def __call__(self, x):
 		for layer in self._layers:
