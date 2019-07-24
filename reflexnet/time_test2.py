@@ -36,7 +36,6 @@ with tf.compat.v1.Session().as_default():
 
     for _ in range(N):
         input_val = np.random.uniform(size=[batch_size, input_size])
-
         start = time.time()
         ff.eval(feed_dict={
             input: input_val
