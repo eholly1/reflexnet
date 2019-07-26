@@ -13,6 +13,7 @@ import utils
 TRAINING_CLASSES = {
   'MLP': (behavioral_cloning.BCTrainer, policy.FeedForwardPolicy),
   'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
+  'SoftKNN': (behavioral_cloning.SoftKNNBCTrainer, policy.SoftKNNPolicy),
 }
 
 def train_daggr(

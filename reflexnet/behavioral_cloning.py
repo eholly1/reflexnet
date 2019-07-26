@@ -155,3 +155,46 @@ class ReflexBCTrainer(trainer.Trainer):
     supervisor_loss = bc_loss
 
     return supervisor_loss, reflexes_loss
+
+class SoftKNNBCTrainer(trainer.Trainer):
+
+  def __init__(self, *args, **kwargs):
+    if 'loss_fn' not in kwargs or kwargs['loss_fn'] is None:
+      self._loss_fn = DEFAULT_BC_LOSS_FN
+    if 'loss_fn' in kwargs:
+      if kwargs['loss_fn'] is not None:
+        self._loss_fn = kwargs['loss_fn']
+      del kwargs['loss_fn']
+    super().__init__(*args, **kwargs)
+    assert issubclass(type(self._model), policy.SoftKNNPolicy), (
+      "Got policy of type %s, expected SoftKNNPolicy." % type(self._model)
+    )
+    
+  def _initialize(self, dataset):
+    training_data = dataset.sample(batch_size=float('inf'))
+    obs_data = training_data['obs']
+    obs_mean = obs_data.mean(dim=0)
+    obs_stddev = obs_data.std(dim=0)
+    act_data = training_data['act']
+    act_mean = act_data.mean(dim=0)
+    act_stddev = act_data.std(dim=0)
+    self.policy.model.initialize_points(
+      input_mean=obs_mean,
+      input_stddev=obs_stddev,
+      output_mean=act_mean,
+      output_stddev=act_stddev,
+    )
+
+  @property
+  def policy(self):
+    return self.model
+
+  def _parameters(self):
+    return [self._model.parameters()]
+
+  def _inference_and_loss(self, sample_data):
+    pred_act = self.policy(sample_data['obs'])
+    expert_act = sample_data['act']
+    loss = self._loss_fn(pred_act, expert_act)
+    summaries.add_scalar('_performance/loss', loss, self.global_step)
+    return loss,

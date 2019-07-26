@@ -151,28 +151,47 @@ class ReflexPolicy(TorchPolicy):
     weighted_reflex_outputs =  reflex_outputs * reflex_softmax_weights
     action_outputs = torch.sum(weighted_reflex_outputs, dim=-1)
     return action_outputs
-    
 
-class MetricPolicy(TorchPolicy):
 
-  def __init__(self, obs_size, embedding_size, data, layers_config=[64, 64], k=1):
+class SoftKNNPolicy(TorchPolicy):
+  
+  @staticmethod
+  def for_env(gym_env):
+    obs_size = gym_env.observation_space.shape[0]
+    act_size = gym_env.action_space.shape[0]
+    return SoftKNNPolicy(obs_size, act_size)
+
+  def __init__(self, obs_size, act_size, layers_config=[64, 64]):
     super().__init__()
-    self._model = network.FeedForward(
+    self._model = network.SoftKNN(
       input_size=obs_size,
-      output_size=embedding_size,
-    )
-    self._data = data
-    self._kdtree = None
-    self._k = k
+      output_size=act_size)
 
-  def get_embedding(self, obs):
-    return self._model(obs)
+  @property
+  def model(self):
+    return self._model
 
-  def rebuild(self):
-    embeddings = self.get_embedding(data["obs"])
-    self._kdtree = scipy.spatial.KDTree(embeddings)
 
-  def forward(self, obs):
-    embedding = self.get_embedding(obs)
-    neighbor_dists, neighbor_idxs = self._kdtree.query(embedding, k)
-    action = self._data[neighbor_idxs[0]]
+# class MetricPolicy(TorchPolicy):
+
+#   def __init__(self, obs_size, embedding_size, data, layers_config=[64, 64], k=1):
+#     super().__init__()
+#     self._model = network.FeedForward(
+#       input_size=obs_size,
+#       output_size=embedding_size,
+#     )
+#     self._data = data
+#     self._kdtree = None
+#     self._k = k
+
+#   def get_embedding(self, obs):
+#     return self._model(obs)
+
+#   def rebuild(self):
+#     embeddings = self.get_embedding(data["obs"])
+#     self._kdtree = scipy.spatial.KDTree(embeddings)
+
+#   def forward(self, obs):
+#     embedding = self.get_embedding(obs)
+#     neighbor_dists, neighbor_idxs = self._kdtree.query(embedding, k)
+#     action = self._data[neighbor_idxs[0]]

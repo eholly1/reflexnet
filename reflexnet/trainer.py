@@ -59,6 +59,10 @@ class Trainer(ABC):
     """
     raise NotImplementedError
 
+  def _initialize(self, dataset):
+    """Perform any training initialization needed."""
+    pass
+
   @property
   def model(self):
     return self._model
@@ -77,6 +81,8 @@ class Trainer(ABC):
     if eval_every is None:
       eval_every = int(train_steps / 20)
     self._global_step = 0
+
+    self._initialize(self._dataset)
 
     # Initial eval.
     self.print('Running initial eval.')
