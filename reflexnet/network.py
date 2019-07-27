@@ -39,7 +39,7 @@ class SoftKNN(torch.nn.Module):
 		self._outputs[i] = output_value
 		self._i += 1
 
-	def __init__( # foo
+	def __init__(
 		self,
 		input_size,
 		output_size,
