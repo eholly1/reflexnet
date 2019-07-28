@@ -45,7 +45,7 @@ class SoftKNN(torch.nn.Module):
 		self,
 		input_size,
 		output_size,
-		init_stdev=0.1, 
+		init_stdev=1.0,
 		k=1000):
 		super().__init__()
 		self._k = k
