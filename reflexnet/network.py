@@ -1,5 +1,7 @@
 import torch
 
+import summaries
+
 def _module_list_forward(module_input, module_list):
 	x = module_input
 	for m in module_list:
@@ -59,6 +61,7 @@ class SoftKNN(torch.nn.Module):
 		self._softmax = torch.nn.Softmax(dim=-1)  # Softmax dim should be across k.
 		self._outputs = torch.nn.parameter.Parameter(
 			torch.zeros(k, output_size))
+		self.global_step = 0
 
 	def initialize_points(self, input_mean, input_stddev, output_mean, output_stddev):
 		input_init_dist = torch.distributions.normal.Normal(input_mean, input_stddev)
@@ -77,7 +80,15 @@ class SoftKNN(torch.nn.Module):
 
 		lp = self._distribution.log_prob(x)
 		joint_lp = torch.sum(lp, dim=-1)  # Sum log probs over obs dim.
+
 		softmax_weights = self._softmax(joint_lp)
+
+		if self.training:
+			sorted_weights, _ = torch.sort(
+				softmax_weights, dim=-1, descending=True)
+			summaries.add_histogram(
+				"top_ten_softmax_weights", sorted_weights[:, :10], self.global_step)
+
 		return softmax_weights
 
 	def forward(self, x, softmax_weights=None):

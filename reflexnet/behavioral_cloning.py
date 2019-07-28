@@ -193,6 +193,8 @@ class SoftKNNBCTrainer(trainer.Trainer):
     return [self._model.parameters()]
 
   def _inference_and_loss(self, sample_data):
+    self.policy.model.global_step = self.global_step
+
     pred_act = self.policy(sample_data['obs'])
     expert_act = sample_data['act']
     loss = self._loss_fn(pred_act, expert_act)
