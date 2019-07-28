@@ -44,7 +44,7 @@ class SoftKNN(torch.nn.Module):
 		input_size,
 		output_size,
 		init_stdev=0.1, 
-		k=200):
+		k=1000):
 		super().__init__()
 		self._k = k
 		self._i = 0
@@ -69,7 +69,7 @@ class SoftKNN(torch.nn.Module):
 		output_init_sample = output_init_dist.sample(sample_shape=[self._k])
 		self._outputs.data = output_init_sample.data
 
-	def forward(self, x):
+	def softmax_weights(self, x):
 		if len(x.shape) > 1:
 			# If there is a batch dimension, add a dimension to broadcast with
 			#   reflex dimension.
@@ -78,6 +78,11 @@ class SoftKNN(torch.nn.Module):
 		lp = self._distribution.log_prob(x)
 		joint_lp = torch.sum(lp, dim=-1)  # Sum log probs over obs dim.
 		softmax_weights = self._softmax(joint_lp)
+		return softmax_weights
+
+	def forward(self, x, softmax_weights=None):
+		if softmax_weights is None:
+			softmax_weights = self.softmax_weights(x)
 		weighted_outputs = self._outputs * softmax_weights.unsqueeze(dim=-1)
 		outputs = weighted_outputs.sum(dim=-2)  # Sum over k.
 		return outputs
