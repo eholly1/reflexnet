@@ -41,20 +41,17 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
   parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Name of env to make and use.')
-  parser.add_argument('--action_noise', default=0.55, type=float, help='Probability of adding noise to each action.')
+  parser.add_argument('--action_noise', default=0.5, type=float, help='Probability of adding noise to each action.')
   parser.add_argument('--max_rollout_length', default=200, type=int, help='Max length of each rollout.')
   parser.add_argument('--num_rollouts', default=1000, type=int, help='Number of rollouts to collect and save.')
   parser.add_argument('--demo_filename', default='rollouts.torch', type=str, help='Name of demo file to save.')
   args = parser.parse_args()
 
-  initial_log_dir = os.path.join(args.log_dir, 'demos', args.env_name)
+  args.log_dir = os.path.join(args.log_dir, 'demos', args.env_name)
 
-  for action_noise in np.array(range(7))*0.1:
-    args.action_noise = action_noise
-    args.log_dir = initial_log_dir
-    # Make a unique directory under log_dir and save args there.
-    utils.init_log_dir(args)
-    make_demos(**vars(args))
+  utils.init_log_dir(args)
+
+  make_demos(**vars(args))
 
 if __name__ == '__main__':
   main()

@@ -76,7 +76,7 @@ def main():
   parser.add_argument('--batch_size', default=64, type=int, help='Batch size for SGD.')
   parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')
   parser.add_argument('--train_steps', default=30000, type=int, help='Total number of train steps.')
-  parser.add_argument('--eval_every', default=None, type=int, help='Eval after this many train steps.')
+  parser.add_argument('--eval_every', default=1500, type=int, help='Eval after this many train steps.')
   args = parser.parse_args()
 
   args.log_dir = os.path.join(args.log_dir, 'daggr', args.env_name)
