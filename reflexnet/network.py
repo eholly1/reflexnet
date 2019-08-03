@@ -46,6 +46,7 @@ class SoftKNN(torch.nn.Module):
 		input_size,
 		output_size,
 		init_stdev=1.0,
+		top_k=20,
 		k=1000):
 		super().__init__()
 		self._k = k
@@ -61,6 +62,7 @@ class SoftKNN(torch.nn.Module):
 		self._softmax = torch.nn.Softmax(dim=-1)  # Softmax dim should be across k.
 		self._outputs = torch.nn.parameter.Parameter(
 			torch.zeros(k, output_size))
+		self._top_k = top_k
 		self.global_step = 0
 
 	def initialize_points(self, input_mean, input_stddev, output_mean, output_stddev):
@@ -73,6 +75,10 @@ class SoftKNN(torch.nn.Module):
 		self._outputs.data = output_init_sample.data
 
 	def softmax_weights(self, x):
+		"""Get the softmax weights across reflexes, for an input tensor.
+		If top_k is not None, returns only the top K softmax weights, with the indices
+		for those reflexes.
+		"""
 		if len(x.shape) > 1:
 			# If there is a batch dimension, add a dimension to broadcast with
 			#   reflex dimension.
@@ -81,19 +87,28 @@ class SoftKNN(torch.nn.Module):
 		lp = self._distribution.log_prob(x)
 		joint_lp = torch.sum(lp, dim=-1)  # Sum log probs over obs dim.
 
+		# If top_k is not None, take only topk log_probabilities.
+		softmax_topk_idxs = None
+		if self._top_k is not None:
+			joint_lp, softmax_topk_idxs = torch.topk(
+				joint_lp, self._top_k, dim=-1)
+		
 		softmax_weights = self._softmax(joint_lp)
 
+		return softmax_weights, softmax_topk_idxs
+
+	def forward(self, x):
+		softmax_weights, softmax_topk_idxs = self.softmax_weights(x)
+
 		if self.training:
-			sorted_weights, _ = torch.sort(
-				softmax_weights, dim=-1, descending=True)
 			summaries.add_histogram(
-				"top_ten_softmax_weights", sorted_weights[:, :10], self.global_step)
+				"softmax_weights", softmax_weights, self.global_step)
 
-		return softmax_weights
+		if softmax_topk_idxs is None:
+			outputs = self._outputs
+		else:
+			outputs = self._outputs[softmax_topk_idxs, :]
 
-	def forward(self, x, softmax_weights=None):
-		if softmax_weights is None:
-			softmax_weights = self.softmax_weights(x)
-		weighted_outputs = self._outputs * softmax_weights.unsqueeze(dim=-1)
+		weighted_outputs = outputs * softmax_weights.unsqueeze(dim=-1)
 		outputs = weighted_outputs.sum(dim=-2)  # Sum over k.
 		return outputs
