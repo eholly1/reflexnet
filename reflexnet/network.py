@@ -38,7 +38,10 @@ class SoftKNN(torch.nn.Module):
 		with torch.no_grad():
 			idx = self._least_used_reflex()
 			self._mean[idx] = input_value
-			self._stddev[idx] = 1.0
+
+			# Initialize stddev to mean stddev.
+			self._stddev[idx] = torch.mean(self._stddev, dim=0)
+			
 			self._outputs[idx] = output_value
 			self._top_k_counts[idx] = 1.0
 			self._total_counts[idx] = 1.0
