@@ -121,12 +121,16 @@ class Trainer(ABC):
     print_str = ("{}" * len(args)).format(*args)
     print(print_str)
 
-  def _train(self):
+  def _train(self, sample_data=None):
     start_time = time.time()
     self._model.train()  # Put model in train mode.
-    sample_data = self._dataset.sample()
+    if sample_data is None:
+      sample_data = self._dataset.sample()
     losses = self._inference_and_loss(sample_data)
     for i, (opt, loss) in enumerate(zip(self._optimizers, losses)):
+      loss = torch.mean(loss)
+      summaries.add_scalar('_performance/loss', loss, self.global_step)
+
       opt.zero_grad()
       loss.backward(retain_graph=(i+1 != len(losses)))
       opt.step()
@@ -136,18 +140,18 @@ class Trainer(ABC):
     steps_per_sec = 1 / total_time
     summaries.add_scalar('misc/train_steps_per_sec', steps_per_sec, self.global_step)
 
-    return loss
+    return losses
 
   def _eval(self):
     with torch.no_grad():
       self._model.eval()  # Put model in eval mode.
       start_time = time.time()
       sample_data = self._dataset.sample(batch_size=float('inf'), eval=True)
-      loss = self._inference_and_loss(sample_data)
+      losses = self._inference_and_loss(sample_data)
       total_time = time.time() - start_time
 
     # Summarize timing.
     steps_per_sec = 1 / total_time
     summaries.add_scalar('misc/eval_steps_per_sec', steps_per_sec, self.global_step)
     
-    return loss
+    return losses

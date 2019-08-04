@@ -35,11 +35,13 @@ class SoftKNN(torch.nn.Module):
 		return self._k
 
 	def set_point(self, input_value, output_value):
-		if self._i > self._k:
-			raise ValueError('Cannot set anymore points.')
-		self._mean[i] = input_value
-		self._outputs[i] = output_value
-		self._i += 1
+		with torch.no_grad():
+			idx = self._least_used_reflex()
+			self._mean[idx] = input_value
+			self._stddev[idx] = 1.0
+			self._outputs[idx] = output_value
+			self._top_k_counts[idx] = 1.0
+			self._total_counts[idx] = 1.0
 
 	def __init__(
 		self,
@@ -64,6 +66,17 @@ class SoftKNN(torch.nn.Module):
 			torch.zeros(k, output_size))
 		self._top_k = top_k
 		self.global_step = 0
+
+		# Count of the number of times each reflex has been used.
+		self._top_k_counts = torch.nn.parameter.Parameter(torch.zeros(k), requires_grad=False)
+
+		# Count of the number of opportunities each reflex has been involved in.
+		self._total_counts = torch.nn.parameter.Parameter(torch.zeros(k), requires_grad=False)
+
+	def _least_used_reflex(self):
+		usages = self._top_k_counts / self._total_counts
+		_, idx = torch.topk(-usages, 1)
+		return idx
 
 	def initialize_points(self, input_mean, input_stddev, output_mean, output_stddev):
 		input_init_dist = torch.distributions.normal.Normal(input_mean, input_stddev)
@@ -108,6 +121,9 @@ class SoftKNN(torch.nn.Module):
 			outputs = self._outputs
 		else:
 			outputs = self._outputs[softmax_topk_idxs, :]
+		
+		self._top_k_counts[softmax_topk_idxs] += 1.0
+		self._total_counts += 1.0
 
 		weighted_outputs = outputs * softmax_weights.unsqueeze(dim=-1)
 		outputs = weighted_outputs.sum(dim=-2)  # Sum over k.

@@ -108,8 +108,6 @@ class BCTrainer(trainer.Trainer):
     summaries.add_scalar('_performance/loss', loss, self.global_step)
     return loss,
 
-# DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
-DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
 class ReflexBCTrainer(trainer.Trainer):
 
   def __init__(self, *args, **kwargs):
@@ -185,6 +183,19 @@ class SoftKNNBCTrainer(trainer.Trainer):
       output_stddev=act_stddev,
     )
 
+  def _train(self, sample_data=None):
+    if sample_data is None:
+      sample_data = self._dataset.sample()
+    
+    losses = super()._train(sample_data=sample_data)
+    
+    mse_loss = losses[0]
+    _, top_loss_idx = torch.topk(mse_loss, 1)
+    self.policy.model.set_point(
+      sample_data['obs'][top_loss_idx], sample_data['act'][top_loss_idx])
+
+    return losses
+
   @property
   def policy(self):
     return self.model
@@ -197,6 +208,10 @@ class SoftKNNBCTrainer(trainer.Trainer):
 
     pred_act = self.policy(sample_data['obs'])
     expert_act = sample_data['act']
-    loss = self._loss_fn(pred_act, expert_act)
-    summaries.add_scalar('_performance/loss', loss, self.global_step)
+
+    # loss = self._loss_fn(pred_act, expert_act)
+
+    # Sum over action dim, but not batch dim.
+    loss = torch.sum(torch.pow(pred_act - expert_act, 2.0), dim=-1)
+
     return loss,
