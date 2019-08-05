@@ -11,13 +11,35 @@ import traceback
 
 COPY_INTERVAL = 180.0  # 3min
 
-def get_parameters_for_id(param_config, id):
-    # TODO(eholly): implement this.
-    raise NotImplementedError
+def get_parameters_for_id(param_config, exp_id):
+    parameters = {}
 
-def copy_experiment_data():
-    # TODO(eholly): Copy experiment data.
-    pass
+    # Copy out all non-list params.
+    for k, v in param_config.items():
+        if type(v) != list:
+            parameters[k] = v
+    for k, _ in parameters.items():
+        del param_config[k]            
+
+    # Figure out which setting corresponds to exp_id.
+    keys = [k for k in param_config.keys()]
+    keys.sort()
+    mag = 1
+    keys_and_mags = []
+    # import pdb; pdb.set_trace()
+    for key in keys:
+        keys_and_mags.append((key, mag))
+        mag *= len(param_config[key])
+    keys_and_mags.reverse()
+    # import pdb; pdb.set_trace()
+    for key, mag in keys_and_mags:
+        i = 0
+        while exp_id >= mag:
+            exp_id -= mag
+            i += 1
+        parameters[key] = param_config[key][i]
+
+    return parameters
 
 class Supervisor:
 
@@ -25,6 +47,9 @@ class Supervisor:
         dst = "gs://reflexes_bucket/experiments/%s" % self.raw_name
         cmd = "gsutil cp -r %s %s" % (src, dst)
         subprocess.call(cmd.split(" "))
+
+    def copy_experiment_data(self):
+        self.copy("/data/daggr/")
 
     def __del__(self):
         # If an exception happened, write out the traceback to a file, and copy to
@@ -85,14 +110,15 @@ class Supervisor:
             while True:
                 now = time.time()
                 if now > next_copy_time:
-                    copy_experiment_data()
+                    self.copy_experiment_data()
                     next_copy_time = now + COPY_INTERVAL
 
                 running_python_commands = str(subprocess.check_output(["pgrep", "-af", "python"]))
                 if not "reflexnet" in running_python_commands:
                     break
 
-            copy_experiment_data()
+            self.copy_experiment_data()
+
         except:
             self.tb = traceback.format_exc()
 
