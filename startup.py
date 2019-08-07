@@ -26,12 +26,10 @@ def get_parameters_for_id(param_config, exp_id):
     keys.sort()
     mag = 1
     keys_and_mags = []
-    # import pdb; pdb.set_trace()
     for key in keys:
         keys_and_mags.append((key, mag))
         mag *= len(param_config[key])
     keys_and_mags.reverse()
-    # import pdb; pdb.set_trace()
     for key, mag in keys_and_mags:
         i = 0
         while exp_id >= mag:
@@ -70,8 +68,8 @@ class Supervisor:
             # Get the experiment name and id.
             self.raw_name = requests.get(
                 "http://metadata.google.internal/computeMetadata/v1/instance/name")
-            second_part = self.raw_name.split("_", 1)[1]
-            exp_name, exp_id_str = second_part.rsplit("_", 1)
+            second_part = self.raw_name.split("-", 1)[1]
+            exp_name, exp_id_str = second_part.rsplit("-", 1)
             exp_id = int(exp_id_str)
 
             # Get the branch name.
