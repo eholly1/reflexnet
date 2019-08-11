@@ -1,5 +1,5 @@
 {
-    "name": "remote_experiment_test",
+    "name": "remoteexperimentest",
     "script": "train_daggr.py",
     "description": "Testing remote experiments.",
     "branch_name": "master",

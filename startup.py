@@ -1,15 +1,23 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 # This shell configures the automatic behavior of experiment instances on GCE.
 # Based on example at: https://cloud.google.com/community/tutorials/create-a-self-deleting-virtual-machine
 
 import json
+import os
 import requests
 import subprocess
+import sys
 import time
 import traceback
 
 COPY_INTERVAL = 180.0  # 3min
+
+STDOUT_FNAME = '/tmp/startup_py_stdout.txt'
+STDERR_FNAME = '/tmp/startup_py_stderr.txt'
+
+sys.stdout = open(STDOUT_FNAME, 'w')
+sys.stderr = open(STDERR_FNAME, 'w')
 
 def get_parameters_for_id(param_config, exp_id):
     parameters = {}
@@ -42,9 +50,10 @@ def get_parameters_for_id(param_config, exp_id):
 class Supervisor:
 
     def copy(self, src):
-        dst = "gs://reflexes_bucket/experiments/%s" % self.raw_name
+        src_fname = os.path.split(src)[-1]
+        dst = "gs://reflexes_bucket/experiments/%s/%s" % (self.raw_name, src_fname)
         cmd = "gsutil cp -r %s %s" % (src, dst)
-        subprocess.call(cmd.split(" "))
+        subprocess.call(cmd, shell=True)
 
     def copy_experiment_data(self):
         self.copy("/data/daggr/")
@@ -53,69 +62,70 @@ class Supervisor:
         # If an exception happened, write out the traceback to a file, and copy to
         # experiment folder.
         if self.tb is not None:
-            with open("supervisor_error.txt", "w") as f:
-                f.write(self.tb)
-            self.copy("supervisor_error.txt")
-
+            print("\n", self.tb, flush=True)
+            
+            self.copy(STDOUT_FNAME)
+            self.copy(STDERR_FNAME)
+            
+        print("\ndeleting ", self.raw_name, flush=True)
         delete_cmd = "gcloud --quiet compute instances delete %s --zone=%s" % (self.raw_name, self.gcloud_zone)
         subprocess.call(delete_cmd.split(" "))
 
-    def run(self):
-        self.tb = None
+    def _bash_exec(self, cmd):
+        print("$ " + cmd)
+        
         try:
-            # _________________ Start the experiment.
+            pipe = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            stdout, stderr = str(pipe.stdout)[2:-1], str(pipe.stderr)[2:-1]
+            if stdout != "":
+                print(stdout + "\n")
+            if stderr != "":
+                print(stderr + "\n")
+            return stdout
+        except subprocess.CalledProcessError as err:
+            print(str(err.output) + "\n")
+            raise err
 
+    def run(self):
+
+        self.tb = None
+
+        try:
             # Get the experiment name and id.
-            self.raw_name = requests.get(
-                "http://metadata.google.internal/computeMetadata/v1/instance/name")
-            second_part = self.raw_name.split("-", 1)[1]
-            exp_name, exp_id_str = second_part.rsplit("-", 1)
+            cmd = "curl -X GET http://metadata.google.internal/computeMetadata/v1/instance/name -H 'Metadata-Flavor: Google'"
+            self.raw_name = self._bash_exec(cmd)
+            _, branch_name, exp_name, exp_id_str = self.raw_name.split("-")
             exp_id = int(exp_id_str)
-
-            # Get the branch name.
-            branch_name = requests.get(
-                "http://metadata.google.internal/computeMetadata/v1/instance/branch_name")
-
+            
             # Get google cloud zone.
-            self.gcloud_zone = requests.get(
-                "http://metadata.google.internal/computeMetadata/v1/instance/zone")
+            cmd = "curl -X GET http://metadata.google.internal/computeMetadata/v1/instance/zone -H 'Metadata-Flavor: Google'"
+            self.gcloud_zone = self._bash_exec(cmd)
 
             # Check out the right branch.
-            assert not subprocess.call(["cd", "~/reflexnet"])
-            assert not subprocess.call(["git", "pull"])
-            assert not subprocess.call(["git", "checkout", branch_name])
+            self._bash_exec("git clone https://github.com/eholly1/reflexnet.git")
+            os.chdir("/reflexnet")
+            self._bash_exec("git pull")
+            self._bash_exec("git checkout %s" % branch_name)
 
             # Load the config.
-            config = json.load("reflexnet/experiment_config.json")
+            config = json.load(open("reflexnet/experiment_config.json"))
             parameters = get_parameters_for_id(config["parameters"], exp_id)
-
-            # Build the command line string.
-            cmd = "python3 reflexnet/%s" % config["script"]
-            for k, v in parameters:
-                cmd += " %s %s" % (k, v)
+            params_ls = []
+            for k, v in parameters.items():
+                params_ls.extend([k, v])
 
             # Start Docker
-            assert not subprocess.call(["DB"])
-            docker_proc = subprocess.Popen(["docker", "run" "reflexnet_image"] + cmd.split(" "))
-
-            time.sleep(10.0)
-
-            # _________________ Check that it is running and wait until it finishes. 
-            # _________________ Every 3 minutes, copy output to filestorage.
-
-
-            next_copy_time = time.time()
-            while True:
-                now = time.time()
-                if now > next_copy_time:
-                    self.copy_experiment_data()
-                    next_copy_time = now + COPY_INTERVAL
-
-                running_python_commands = str(subprocess.check_output(["pgrep", "-af", "python"]))
-                if not "reflexnet" in running_python_commands:
-                    break
-
-            self.copy_experiment_data()
+            os.mkdir("/data")
+            os.chdir("/reflexnet/docker")
+            self._bash_exec("sudo apt update")
+            self._bash_exec("sudo apt -y install docker.io")
+            self._bash_exec("docker build --tag reflexnet_image .")
+            self._bash_exec("docker run --name reflexnet_container -d -v /reflexnet/:/reflexnet_workdir -v /data/:/data/ reflexnet_image")
+            self._bash_exec("docker exec -it reflexnet_container bash")
+            # time.sleep(10000)
+            docker_proc = subprocess.Popen(["docker", "run" "reflexnet_image"] + params_ls)
+            print('\nstarted docker')
 
         except:
             self.tb = traceback.format_exc()

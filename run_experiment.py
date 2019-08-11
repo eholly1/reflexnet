@@ -1,15 +1,17 @@
+#!/usr/bin/python3
+
 import argparse
 import json
 import subprocess
 
 
-VALID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+VALID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890"
 
 def _check_name(name):
     for c in name:
         if not c in VALID_CHARS:
             raise ValueError(
-                "Found invalid char '%s' in experiment name. Valid chars are (A-Z)(a-z)-" % c)
+                "Found invalid char '%s' in experiment name. Valid chars are (A-Z)(a-z)(0-9)" % c)
 
 def main():
     config = json.load(open("reflexnet/experiment_config.json"))
@@ -28,10 +30,11 @@ def main():
 
     for i in range(num_experiment_jobs):
         subprocess.call([
-            "gcloud", "compute", "instances", "create", "experiment-%s-%d" % (name, i),
+            "gcloud", "compute", "instances", "create",
+            "experiment-%s-%s-%d" % (branch_name, name, i),
             "--source-instance-template", "experiment-template", "--zone", "us-west1-a",
-            "--metadata-from-file=startup-script=startup.py",
-            "--metadata", "branch_name=%s" % branch_name])
+            "--image", "experiment-image",
+            "--metadata-from-file", "startup-script=startup.py"])
 
 
 if __name__ == "__main__":
