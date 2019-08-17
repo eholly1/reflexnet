@@ -5,6 +5,7 @@ import roboschool
 import torch
 
 import behavioral_cloning
+import numpy as np
 import policy
 import rollouts
 import summaries
@@ -12,8 +13,7 @@ import utils
 
 TRAINING_CLASSES = {
   'MLP': (behavioral_cloning.BCTrainer, policy.FeedForwardPolicy),
-  'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
-  'SoftKNN': (behavioral_cloning.SoftKNNBCTrainer, policy.SoftKNNPolicy),
+  # 'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
 }
 
 def train_daggr(
@@ -32,7 +32,6 @@ def train_daggr(
   env = gym.make(env_name)
   training_policy = policy_cls.for_env(env)
 
-  import numpy as np
   total_params = 0
   for pg in training_policy.parameters():
     for p in pg:
@@ -73,10 +72,10 @@ def main():
   parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Parent directory under which to save output.')
   parser.add_argument('--demo_filepath', required=True, type=str, help='Full path to file with task demos.')
   parser.add_argument('--training_type', default='MLP', type=str, help='The type of policy to train.')
-  parser.add_argument('--batch_size', default=64, type=int, help='Batch size for SGD.')
+  parser.add_argument('--batch_size', default=16, type=int, help='Batch size for SGD.')
   parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')
   parser.add_argument('--train_steps', default=30000, type=int, help='Total number of train steps.')
-  parser.add_argument('--eval_every', default=1500, type=int, help='Eval after this many train steps.')
+  parser.add_argument('--eval_every', default=None, type=int, help='Eval after this many train steps.')
   args = parser.parse_args()
 
   args.log_dir = os.path.join(args.log_dir, 'daggr', args.env_name)

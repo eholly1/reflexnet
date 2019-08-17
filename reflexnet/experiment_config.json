@@ -1,0 +1,12 @@
+{
+    "name": "remoteexperimentest",
+    "script": "train_daggr.py",
+    "description": "Testing remote experiments.",
+    "branch_name": "master",
+    "parameters": {
+        "--demo_filepath": "/data/demos/RoboschoolWalker2d-v1/0/rollouts.torch",
+        "--log_dir": "/data/",
+        "--training_type": "SoftKNN",
+        "--train_steps": 250000
+    }
+}
