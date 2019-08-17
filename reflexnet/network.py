@@ -28,6 +28,11 @@ class FeedForward(torch.nn.Module):
 	def forward(self, x):
 		return _module_list_forward(x, self._module_list)
 
+class HRMNet(torch.nn.Module):
+	"""Hierarchical Reflex Modulation (HRM) Network"""
+
+	def __init__(self):
+
 class SoftKNN(torch.nn.Module):
 
 	@property

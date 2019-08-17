@@ -32,7 +32,7 @@ def main():
         subprocess.call([
             "gcloud", "compute", "instances", "create",
             "experiment-%s-%s-%d" % (branch_name, name, i),
-            "--source-instance-template", "experiment-template", "--zone", "us-west1-a",
+            "--source-instance-template", "experiment-template-1", "--zone", "us-west1-a",
             "--image", "experiment-image",
             "--metadata-from-file", "startup-script=startup.py"])
 
