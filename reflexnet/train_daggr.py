@@ -3,6 +3,7 @@ import gym
 import os
 import roboschool
 import torch
+from torch.nn.utils.rnn import PackedSequence
 
 import behavioral_cloning
 import policy
@@ -14,6 +15,7 @@ TRAINING_CLASSES = {
   'MLP': (behavioral_cloning.BCTrainer, policy.FeedForwardPolicy),
   'Reflex': (behavioral_cloning.ReflexBCTrainer, policy.ReflexPolicy),
   'SoftKNN': (behavioral_cloning.SoftKNNBCTrainer, policy.SoftKNNPolicy),
+  'HRM': (behavioral_cloning.BCTrainer, policy.HRMPolicy),
 }
 
 def train_daggr(
@@ -53,10 +55,13 @@ def train_daggr(
     summaries.add_scalar('_performance/avg_rollout_reward', avg_rew, trainer.global_step)
 
     # Add oracle data to dataset.
-    oracle_actions = oracle_policy(packed_rollout_data['obs'].data)
+    packed_oracle_actions = PackedSequence(
+      data=torch.tensor(oracle_policy(packed_rollout_data['obs'].data)),
+      batch_sizes=packed_rollout_data['obs'].batch_sizes,
+    )
     oracle_data = {
-      'obs': packed_rollout_data['obs'].data,
-      'act': torch.tensor(oracle_actions),
+      'obs': packed_rollout_data['obs'],
+      'act': packed_oracle_actions,
     }
     dataset.add_data(oracle_data)
 
@@ -70,8 +75,8 @@ def train_daggr(
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--log_dir', required=True, type=str, help='Parent directory under which to save output.')
-  parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Parent directory under which to save output.')
   parser.add_argument('--demo_filepath', required=True, type=str, help='Full path to file with task demos.')
+  parser.add_argument('--env_name', default='RoboschoolWalker2d-v1', type=str, help='Parent directory under which to save output.')
   parser.add_argument('--training_type', default='MLP', type=str, help='The type of policy to train.')
   parser.add_argument('--batch_size', default=64, type=int, help='Batch size for SGD.')
   parser.add_argument('--learning_rate', default=1e-5, type=int, help='Learning rate for optimizer.')

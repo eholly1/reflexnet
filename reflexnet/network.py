@@ -1,4 +1,6 @@
+import numpy as np
 import torch
+from torch.nn.utils.rnn import PackedSequence
 
 import summaries
 
@@ -9,6 +11,10 @@ def _module_list_forward(module_input, module_list):
 	return x
 
 class FeedForward(torch.nn.Module):
+
+	@property
+	def sequential(self):
+		return False
 
 	def __init__(self, input_size, output_size, layers_config, output_activation=None):
 		super().__init__()
@@ -28,12 +34,159 @@ class FeedForward(torch.nn.Module):
 	def forward(self, x):
 		return _module_list_forward(x, self._module_list)
 
+class HRMLayer(torch.nn.Module):
+
+	def __init__(
+		self,
+		input_size,
+		output_size,
+		time_delay,
+		layers_config,
+		):
+		super().__init__()
+		self._output_size = output_size
+		self._network = FeedForward(
+			input_size=input_size,
+			output_size=self._output_size,
+			output_activation=torch.nn.Sigmoid(),
+			layers_config=layers_config,
+		)
+		self._time_delay = time_delay
+		self.reset()
+
+	def reset(self):
+		self._last_output = torch.zeros(1, self._output_size)
+
+	def forward(self, x, counter):
+		if counter % self._time_delay == 0:
+			self._last_output = self._network(x)
+		return self._last_output
+		
+
 class HRMNet(torch.nn.Module):
 	"""Hierarchical Reflex Modulation (HRM) Network"""
 
-	def __init__(self):
+	@property
+	def sequential(self):
+		return True
+
+	def reset(self):
+		self._counter = -1
+		for layer in self._layers:
+			if isinstance(layer, HRMLayer):
+				layer.reset()
+
+	def __init__(
+		self,
+		input_size,
+		output_size,
+		output_reflex_factor=5,
+		layers_config=[16],
+		latent_time_delays=[3, 10, 30],
+		latent_control_dims=[64, 32, 16],
+		):
+		super().__init__()
+		self._time_delays = latent_time_delays
+
+		self._layers = []
+
+		# Output Layer (MLP)
+		self._output_size = output_size
+		self._output_reflex_factor = output_reflex_factor
+		output_layer_dim = output_size * self._output_reflex_factor
+		self._layers.append(FeedForward(
+			input_size=input_size,
+			output_size=output_size * output_reflex_factor,
+			layers_config=layers_config,
+			output_activation=torch.nn.Tanh()
+		))
+
+		# Upper Layers (MLPs)
+		for time_delay, control_dim in zip(latent_time_delays, latent_control_dims):
+			self._layers.append(HRMLayer(
+				input_size=input_size,
+				output_size=control_dim,
+				time_delay=time_delay,
+				layers_config=layers_config,
+			))
+
+		self._layers = torch.nn.ModuleList(self._layers)
+		
+		# Inter-layer Modulation Params
+		self._modulation_params = []
+		control_dims = [output_layer_dim] + latent_control_dims
+		for i in range(len(control_dims) - 1):
+			self._modulation_params.append(torch.nn.Parameter(
+				torch.ones(control_dims[i+1], control_dims[i])))
+		self._modulation_activation_fns = [torch.nn.Sigmoid() for _ in self._modulation_params]
+
+		self.reset()
+
+	def _forward_packed_sequence(self, x):
+		outputs = []
+		idx = 0
+
+		# For each frame, take the batch and run single step on it.
+		for counter, batch_size in enumerate(x.batch_sizes):
+			x_step = x[idx:idx+batch_size]
+			outputs.append(self._forward_single_frame(x_step, counter=counter))
+			idx += batch_size
+
+		# Put together outputs in new PackedSequence.
+		return PackedSequence(
+			data=torch.cat(outputs, dim=0),
+			batch_sizes=x.batch_sizes)
+
+	def _forward_single_frame(self, x, counter):
+		# Outputs of each layer of hierarchy.
+		layer_outputs = []
+		for layer in self._layers:
+			if isinstance(layer, HRMLayer):
+				layer_outputs.append(layer(x, counter))
+			else:
+				layer_outputs.append(layer(x))
+
+		# Tuples of modulation matrix params, and their activation functions.
+		modulation = list(zip(self._modulation_params, self._modulation_activation_fns))
+		
+		# Start with output from top layer.
+		output = layer_outputs.pop(-1)
+
+		# For each subsequent layer, compute modulation vector and modulate its
+		#   output.
+		while len(layer_outputs) > 0:
+			mod_params, mod_act_fn = modulation.pop(-1)
+			next_layer_output = layer_outputs.pop(-1)
+			mod_weights = mod_act_fn(mod_params)
+			if len(output.shape) == 1:
+				output = torch.unsqueeze(output, dim=0)
+			mod_vals = torch.mm(output, mod_weights)
+			output = next_layer_output * mod_vals
+ 
+		# Final layer has redundant outputs for each output dim. Weighted sum over
+		#   each output dim.
+		output = output.view(-1, self._output_size, self._output_reflex_factor)
+		mod_vals = mod_vals.view(-1, self._output_size, self._output_reflex_factor)
+		output = torch.sum(output, dim=-1) / torch.sum(mod_vals, dim=-1)
+
+		return output
+
+	def forward(self, x):
+		if isinstance(x, PackedSequence):
+			return self._forward_packed_sequence(x)
+		self._counter += 1
+		output = self._forward_single_frame(x, self._counter)
+		if len(x.shape) == 1:
+			output = torch.squeeze(output)
+		return output
+
+		
 
 class SoftKNN(torch.nn.Module):
+
+	@property
+	def sequential(self):
+		return False
 
 	@property
 	def k(self):

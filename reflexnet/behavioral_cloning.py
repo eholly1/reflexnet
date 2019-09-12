@@ -1,13 +1,14 @@
 import numpy as np
 import os
 import torch
+from torch.nn.utils.rnn import PackedSequence, pad_packed_sequence
 
 import policy
 import summaries
 import trainer
 import utils
 
-# TODO(eholly1): Make generic torch in-memory Dataset class.
+# TODO(eholly): Make generic torch in-memory Dataset class.
 class BCFrameDataset(trainer.Dataset):
 
   def __init__(self, batch_size, load_path, eval_fraction=0.2, max_size=200000):
@@ -37,29 +38,55 @@ class BCFrameDataset(trainer.Dataset):
     assert isinstance(rollout_data['act'], torch.nn.utils.rnn.PackedSequence)
 
     # Store states and actions with single batch dim.
-    self._obs = rollout_data['obs'].data
-    self._act = rollout_data['act'].data
-    assert self._act.shape[0] == self._obs.shape[0]
-    assert len(self._act.shape) == 2
-    self._N = self._obs.shape[0]
+    self._obs, self._ep_lens = torch.nn.utils.rnn.pad_packed_sequence(rollout_data['obs'])
+    self._act, _ = torch.nn.utils.rnn.pad_packed_sequence(rollout_data['act'])
+
+    self._N = len(self._ep_lens)
 
     # Shuffle the data.
     shuffle_indices = np.random.choice(range(self.N), size=self.N, replace=False)
-    self._obs = self._obs[shuffle_indices, :]
-    self._act = self._act[shuffle_indices, :]
+    self._obs = self._obs[:, shuffle_indices]
+    self._act = self._act[:, shuffle_indices]
+    self._ep_lens = self._ep_lens[shuffle_indices]
 
   def add_data(self, rollout_data):
-    assert isinstance(rollout_data['obs'], torch.Tensor)
-    assert isinstance(rollout_data['act'], torch.Tensor)
-    self._obs = torch.cat([rollout_data['obs'], self._obs], dim=0)
-    self._act = torch.cat([rollout_data['act'], self._act], dim=0)
-    self._N += rollout_data['obs'].shape[0]
-    self._train_cutoff = int(self.N * (1.0 - self._eval_fraction))
+    # TODO(eholly): Is 0 the right dim throughout this method? Is it time-major or batch-major?
+    assert isinstance(rollout_data['obs'], PackedSequence)
+    assert isinstance(rollout_data['act'], PackedSequence)
+
+    obs, new_ep_len = pad_packed_sequence(rollout_data['obs'])
+    act, _ = pad_packed_sequence(rollout_data['act'])
+    max_new_ep_len = torch.max(new_ep_len)
+
+    # If existing data time dim is not long enough, pad it to required length.
+    if max_new_ep_len > self._obs.shape[0]:
+      obs_extra_padding_shape = list(self._obs.shape)
+      obs_extra_padding_shape[0] = max_new_ep_len - self._obs.shape[0]
+      self._obs = torch.cat([self._obs, torch.zeros(obs_extra_padding_shape)], dim=0)
+      act_extra_padding_shape = list(self._act.shape)
+      act_extra_padding_shape[0] = max_new_ep_len - self._act.shape[0]
+      self._act = torch.cat([self._act, torch.zeros(act_extra_padding_shape)], dim=0)
+
+    # If new data time dim is not long enough, pad it to required length.
+    if max_new_ep_len < self._obs.shape[0]:
+      obs_extra_padding_shape = list(obs.shape)
+      obs_extra_padding_shape[0] = self._obs.shape[0] - max_new_ep_len
+      obs = torch.cat([obs, torch.zeros(obs_extra_padding_shape)], dim=0)
+      act_extra_padding_shape = list(act.shape)
+      act_extra_padding_shape[0] = self._act.shape[0] - max_new_ep_len
+      act = torch.cat([act, torch.zeros(act_extra_padding_shape)], dim=0)
+
+    self._obs = torch.cat([obs, self._obs], dim=1)  # Cat on batch dim.
+    self._act = torch.cat([act, self._act], dim=1)  # Cat on batch dim.
+    self._ep_lens = torch.cat([new_ep_len, self._ep_lens])
+    self._N += obs.shape[1]
 
     if self._N > self._max_size:
       self._N = self._max_size
       self._obs = self._obs[:self._N]
       self._act = self._act[:self._N]
+      self._ep_lens = self._ep_lens[:self._N]
+
       self._update_train_cutoff()
 
   def sample(self, batch_size=None, eval=False):
@@ -74,14 +101,23 @@ class BCFrameDataset(trainer.Dataset):
     sample_size = min(batch_size, len(sample_range))
     batch_indices = np.random.choice(sample_range, size=sample_size, replace=False)
 
+    # Take data from replay buffer.
+    sample_ep_lens = self._ep_lens[batch_indices]
+    sample_obs, sample_act = self._obs[:, batch_indices], self._act[:, batch_indices]
+
+    # Sort into shortest episodes.
+    sample_ep_lens, sort_idxs = torch.sort(sample_ep_lens, descending=True)
+    sample_obs, sample_act = sample_obs[:, sort_idxs], sample_act[:, sort_idxs]
+
+    # Switch from padded to PackedSequence.
     sample_data = {
-      'obs': self._obs[batch_indices],
-      'act': self._act[batch_indices],
+      'obs': torch.nn.utils.rnn.pack_padded_sequence(sample_obs, sample_ep_lens),
+      'act': torch.nn.utils.rnn.pack_padded_sequence(sample_act, sample_ep_lens),
     }
+
     return sample_data
 
-# DEFAULT_BC_LOSS_FN = torch.nn.SmoothL1Loss()
-DEFAULT_BC_LOSS_FN = torch.nn.MSELoss()
+DEFAULT_BC_LOSS_FN = lambda x, y: torch.mean(torch.pow(x-y, 2.0))
 class BCTrainer(trainer.Trainer):
 
   def __init__(self, *args, **kwargs):
@@ -102,8 +138,8 @@ class BCTrainer(trainer.Trainer):
     return [self._model.parameters()]
 
   def _inference_and_loss(self, sample_data):
-    pred_act = self.policy(sample_data['obs'])
-    expert_act = sample_data['act']
+    pred_act = self.policy(sample_data['obs'].data)
+    expert_act = sample_data['act'].data
     loss = self._loss_fn(pred_act, expert_act)
     summaries.add_scalar('_performance/loss', loss, self.global_step)
     return loss,

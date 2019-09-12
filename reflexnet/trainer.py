@@ -140,6 +140,9 @@ class Trainer(ABC):
     steps_per_sec = 1 / total_time
     summaries.add_scalar('misc/train_steps_per_sec', steps_per_sec, self.global_step)
 
+    if hasattr(self._model, "reset"):
+      self._model.reset()
+
     return losses
 
   def _eval(self):
@@ -153,5 +156,8 @@ class Trainer(ABC):
     # Summarize timing.
     steps_per_sec = 1 / total_time
     summaries.add_scalar('misc/eval_steps_per_sec', steps_per_sec, self.global_step)
+
+    if hasattr(self._model, "reset"):
+      self._model.reset()
     
     return losses

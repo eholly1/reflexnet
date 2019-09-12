@@ -14,7 +14,7 @@ class TorchPolicy(torch.nn.Module):
   def for_env(cls, gym_env, *args, **kwargs):
     obs_size = gym_env.observation_space.shape[0]
     act_size = gym_env.action_space.shape[0]
-    return ReflexPolicy(
+    return cls(
       obs_size, act_size, *args, **kwargs)
 
   def __call__(self, obs):
@@ -93,6 +93,36 @@ class FeedForwardPolicy(TorchPolicy):
     return self._model
 
 
+class HRMPolicy(TorchPolicy):
+
+  def __init__(self, obs_size, act_size):
+    super().__init__()
+    self._model = network.HRMNet(
+      input_size=obs_size,
+      output_size=act_size,
+    )
+
+  def reset(self):
+    self._model.reset()
+
+  @property
+  def model(self):
+    return self._model
+
+
+class SoftKNNPolicy(TorchPolicy):
+
+  def __init__(self, obs_size, act_size, layers_config=[64, 64]):
+    super().__init__()
+    self._model = network.SoftKNN(
+      input_size=obs_size,
+      output_size=act_size)
+
+  @property
+  def model(self):
+    return self._model
+
+
 class ReflexPolicy(TorchPolicy):
 
   @staticmethod
@@ -153,25 +183,6 @@ class ReflexPolicy(TorchPolicy):
     weighted_reflex_outputs =  reflex_outputs * reflex_softmax_weights
     action_outputs = torch.sum(weighted_reflex_outputs, dim=-1)
     return action_outputs
-
-
-class SoftKNNPolicy(TorchPolicy):
-  
-  @staticmethod
-  def for_env(gym_env):
-    obs_size = gym_env.observation_space.shape[0]
-    act_size = gym_env.action_space.shape[0]
-    return SoftKNNPolicy(obs_size, act_size)
-
-  def __init__(self, obs_size, act_size, layers_config=[64, 64]):
-    super().__init__()
-    self._model = network.SoftKNN(
-      input_size=obs_size,
-      output_size=act_size)
-
-  @property
-  def model(self):
-    return self._model
 
 
 # class MetricPolicy(TorchPolicy):
